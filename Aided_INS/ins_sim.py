@@ -1,0 +1,284 @@
+import numpy as np
+import matplotlib.pyplot as plt
+
+from robot import Robot, generate_robot_pair_groups, initialize_robot_positions
+from eskf import ESKFMultiRobot
+import ins_plot
+
+
+dt = 0.01                           # sample period [s]
+sigma_acc = 0.05                    # accelerometer noise std [m/s^2]
+sigma_bias = 0.003                # accelerometer bias driving noise std [m/s^2/sqrt(s)]
+sigma_vel = 10e-3                    # velocity measurement noise std [m/s]
+sigma_range = 0.5                   # range measurement noise std [m]
+vel_threshold = 0.2                 # dominance threshold for dominant-axis detection
+velocity_update_rate_hz = 10.0       # [Hz] dominant-axis zero-velocity update rate
+beacon_range_rate_hz = 2.5         # [Hz] robot0-to-beacon range rate
+robot_range_rate_hz = 5.0           # [Hz] robot-to-robot range rate per pair group
+range_measurement_stop_time = None  # seconds; None => entire run
+standstill_time = 20.0              # [s] initial standstill period for calibration
+
+use_virtual_measurments = True  # If True, use virtual measurements for testing
+beacon_ranging = True
+robot_ranging = True
+
+use_true_initial_position = False       # True => all robots start at true positions
+robot0_knows_initial_position = False    # If True, robot 0 starts at true position even when others don't
+initial_pos_radius = 5.0                # [m] radius for random initial offset
+initial_pos_var_robot = 5**2         # covariance for uncertain initial positions
+initial_bias_var = 0.1              # covariance for initial accelerometer bias
+
+num_robots = 4
+robot_trajectory_patterns = ["trajectory1", "trajectory2", "trajectory3", "trajectory4"]
+imu_seed_base = 1002
+range_seed = 3000
+
+plot_acc = 0
+plot_vel = 0
+plot_pos = 1
+plot_bias = 1
+
+
+
+
+robots = []
+for idx in range(num_robots):
+    robot = Robot(
+        robot_id=idx,
+        dt=dt,
+        sigma_acc=sigma_acc,
+        sigma_bias=sigma_bias,
+        vel_threshold=vel_threshold,
+        standstill_time=standstill_time,
+        trajectory_pattern=robot_trajectory_patterns[idx],
+        imu_seed=imu_seed_base + idx * 37,
+    )
+    robots.append(robot)
+
+initialize_robot_positions(
+    robots,
+    use_true_initial_position,
+    robot0_knows_initial_position,
+    initial_pos_radius,
+    grid_x_limits=(0.0, 35.0),
+    grid_y_limits=(0.0, 20.0),
+)
+
+
+t = robots[0].t
+N = len(t)
+if any(robot.N != N for robot in robots):
+    raise ValueError("All robots must have trajectories of equal length")
+
+
+# Initialize ESKF for multi-robot system
+kf = ESKFMultiRobot(
+    dt,
+    sigma_acc,
+    sigma_bias,
+    sigma_vel,
+    sigma_range,
+    num_robots,
+)
+
+# Initialize covariance P
+for idx in range(num_robots):
+    use_true = use_true_initial_position or (idx == 0 and robot0_knows_initial_position)
+    offset = idx * 6
+    if use_true:
+        kf.P[offset + 0, offset + 0] = 10e-3
+        kf.P[offset + 1, offset + 1] = 10e-3
+    else:
+        kf.P[offset + 0, offset + 0] = initial_pos_var_robot
+        kf.P[offset + 1, offset + 1] = initial_pos_var_robot
+    kf.P[offset + 4, offset + 4] = initial_bias_var
+    kf.P[offset + 5, offset + 5] = initial_bias_var
+
+# Determine dominant-axis velocity update intervals in steps
+if velocity_update_rate_hz > 0.0:
+    velocity_update_interval_steps = max(1, int(round(1.0 / (velocity_update_rate_hz * dt))))
+else:
+    velocity_update_interval_steps = None
+
+# Determine beacon range measurement interval
+if beacon_ranging and beacon_range_rate_hz > 0.0:
+    beacon_range_interval_steps = max(1, int(round(1.0 / (beacon_range_rate_hz * dt))))
+else:
+    beacon_range_interval_steps = None
+
+# Determine robot-to-robot range measurement interval
+if robot_ranging and robot_range_rate_hz > 0.0:
+    robot_range_interval_steps = max(1, int(round(1.0 / (robot_range_rate_hz * dt))))
+else:
+    robot_range_interval_steps = None
+
+range_rng = np.random.default_rng(range_seed)
+current_beacon_index = 0
+
+# Generate robot pair groups for robot-to-robot ranging, returning list of list of (initiator_idx, reflector_idx) tuples
+robot_pair_groups = generate_robot_pair_groups(num_robots)
+current_robot_pair_group_index = 0
+
+
+# Define beacons
+beacon_height = 2.0  # [m]
+beacons_all = np.array([
+    # [2.5, 18.5, beacon_height],
+    # [33.5, 2.5, beacon_height],
+    [17.5, 10.0, beacon_height],
+    # [33.5, 18.5, beacon_height],
+    # [2.5, 2.5, beacon_height],
+])
+
+
+for k in range(1, N):
+    for robot in robots:
+        robot.propagate_nominal(k)
+
+    kf.predict()
+
+    if use_virtual_measurments:
+        # Velocity updates based on dominant axis
+        if (
+            velocity_update_interval_steps is not None
+            and (k % velocity_update_interval_steps == 0)
+        ):
+            for idx, robot in enumerate(robots):
+                dominant_axis = robot.determine_dominant_axis(k)
+                if dominant_axis == "x":
+                    y_meas = np.array([0.0])
+                    y_ins_hat = np.array([robot.v_nominal[k, 1]])
+                    kf.update(idx, "velocity_y", y_meas, y_ins_hat)
+                elif dominant_axis == "y":
+                    y_meas = np.array([0.0])
+                    y_ins_hat = np.array([robot.v_nominal[k, 0]])
+                    kf.update(idx, "velocity_x", y_meas, y_ins_hat)
+
+    
+        # Initial standstill velocity calibration updates (both axes)
+        if t[k] <= standstill_time:
+            for idx, robot in enumerate(robots):
+                # Velocity calibration updates (both axes)
+                y_meas = np.array([0.0, 0.0])
+                y_ins_hat = np.array([robot.v_nominal[k, 0], robot.v_nominal[k, 1]])
+                kf.update(idx, "velocity_calibration", y_meas, y_ins_hat)
+
+   
+
+    # Range updates
+    beacon_due = (
+        beacon_range_interval_steps is not None
+        and (k % beacon_range_interval_steps == 0)
+        and (range_measurement_stop_time is None or t[k] <= range_measurement_stop_time)
+    )
+    robot_due = (
+        robot_range_interval_steps is not None
+        and (k % robot_range_interval_steps == 0)
+        and (range_measurement_stop_time is None or t[k] <= range_measurement_stop_time)
+    )
+
+    if beacon_due:
+        beacon = beacons_all[current_beacon_index]
+        robot0 = robots[0]
+        initiator_true = np.array([robot0.pos_true[k, 0], robot0.pos_true[k, 1], 0.0])
+        initiator_nominal = np.array([robot0.p_nominal[k, 0], robot0.p_nominal[k, 1], 0.0])
+        reflector_true = beacon
+        reflector_nominal = beacon
+        diff_true = initiator_true - reflector_true
+        diff_nominal = initiator_nominal - reflector_nominal
+        y_meas = np.linalg.norm(diff_true) + range_rng.normal(scale=sigma_range)
+        y_meas = max(y_meas, 0.0)
+        y_ins_hat = np.linalg.norm(diff_nominal)
+        kf.update(
+            0,
+            "beacon_range",
+            y_meas,
+            y_ins_hat,
+            initiator_nom=initiator_nominal,
+            reflector_nom=reflector_nominal,
+        )
+        current_beacon_index = (current_beacon_index + 1) % len(beacons_all)
+
+    if robot_due and robot_pair_groups:
+        pair_group = robot_pair_groups[current_robot_pair_group_index]
+        for initiator_idx, reflector_idx in pair_group:
+            if beacon_due and (initiator_idx == 0 or reflector_idx == 0):
+                continue                                                        # Skip if beacon range already done for robot 0 for this epoch
+            initiator_robot = robots[initiator_idx]
+            reflector_robot = robots[reflector_idx]
+            initiator_true = np.array([initiator_robot.pos_true[k, 0], initiator_robot.pos_true[k, 1], 0.0])
+            initiator_nominal = np.array([initiator_robot.p_nominal[k, 0], initiator_robot.p_nominal[k, 1], 0.0])
+            reflector_true = np.array([reflector_robot.pos_true[k, 0], reflector_robot.pos_true[k, 1], 0.0])
+            reflector_nominal = np.array([reflector_robot.p_nominal[k, 0], reflector_robot.p_nominal[k, 1], 0.0])
+            diff_true = initiator_true - reflector_true
+            diff_nominal = initiator_nominal - reflector_nominal
+            y_meas = np.linalg.norm(diff_true) + range_rng.normal(scale=sigma_range)
+            y_meas = max(y_meas, 0.0)
+            y_ins_hat = np.linalg.norm(diff_nominal)
+            kf.update(
+                initiator_idx,
+                "robot_range",
+                y_meas,
+                y_ins_hat,
+                initiator_nom=initiator_nominal,
+                reflector_nom=reflector_nominal,
+                reflector_index=reflector_idx,
+            )
+        current_robot_pair_group_index = (current_robot_pair_group_index + 1) % len(robot_pair_groups)
+
+
+        
+
+    corrections = kf.get_state_correction()         # Get state corrections for all robots
+    for idx, robot in enumerate(robots):            
+        robot.apply_correction(k, corrections[idx]) # Apply corrections to each robot's nominal state
+    kf.reset_error_state()                          # Reset error state after applying corrections
+
+
+# Plotting
+if plot_acc:
+    for idx, robot in enumerate(robots):
+        ins_plot.plot_acceleration(robot.t, robot.acc_true, robot.f_imu, robot_id=idx)
+
+if plot_vel:
+    for idx, robot in enumerate(robots):
+        ins_plot.plot_velocity(robot.t, robot.vel_true, robot.v_nominal, robot_id=idx)
+
+if plot_pos:
+    true_traj_plotted = False
+    for idx, robot in enumerate(robots):
+        ins_plot.plot_positions(
+            robot.t,
+            robot.pos_true,
+            robot.p_nominal,
+            robot_trajectory_patterns[idx],
+            beacons=beacons_all,
+            standstill_time=standstill_time,
+            robot_id=idx,
+            total_robots=num_robots,
+        )
+        if (
+            not true_traj_plotted
+            and robot_trajectory_patterns[idx] == "trajectory1"
+        ):
+            ins_plot.plot_true_trajectory(
+                robot.pos_true,
+                robot_trajectory_patterns[idx],
+                title="True Trajectory 1",
+            )
+            true_traj_plotted = True
+
+if plot_bias:
+    for idx, robot in enumerate(robots):
+        ins_plot.plot_bias(
+            robot.t,
+            robot.bias_true,
+            robot.b_nominal,
+            None,
+            robot_id=idx,
+            total_robots=num_robots,
+        )
+
+plt.show()
+
+
