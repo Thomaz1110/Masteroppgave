@@ -1,5 +1,5 @@
 import numpy as np
-import trajectory
+import random_trajectory
 import imu_acc
 
 
@@ -12,17 +12,19 @@ class Robot:
         sigma_bias,
         vel_threshold,
         standstill_time,
-        trajectory_pattern,
+        duration_s,
+        trajectory_seed,
         imu_seed=None,
     ):
         self.robot_id = robot_id
         self.dt = dt
         self.vel_threshold = vel_threshold
 
-        self.t, self.pos_true, self.vel_true, self.acc_true = trajectory.trajectory_generator(
-            dt,
-            pattern=trajectory_pattern,
+        self.t, self.pos_true, self.vel_true, self.acc_true = random_trajectory.random_trajectory_generator(
+            dt=dt,
+            duration_s=duration_s,
             standstill_time=standstill_time,
+            seed=trajectory_seed,
         )
         self.N = len(self.t)
 

@@ -5,6 +5,8 @@ import matplotlib.pyplot as plt
 TITLE_FONTSIZE = 18
 LABEL_FONTSIZE = 14
 TICK_FONTSIZE = 12
+ARROW_COUNT = 14
+ARROW_LINEWIDTH = 1.5
 
 
 def _style_ax(ax):
@@ -20,13 +22,19 @@ _bias_axes = None
 _bias_total = None
 
 
-def _apply_ddg_ticks_and_grid(ax, pos_true):
+def _apply_ddg_ticks_and_grid(ax, pos_true, grid_x_limits=None, grid_y_limits=None):
     x_vals = pos_true[:, 0]
     y_vals = pos_true[:, 1]
-    x_grid_start = np.floor(x_vals.min() / 0.705) * 0.705
-    x_grid_end = np.ceil(x_vals.max() / 0.705) * 0.705
-    y_grid_start = np.floor(y_vals.min() / 0.505) * 0.505
-    y_grid_end = np.ceil(y_vals.max() / 0.505) * 0.505
+    if grid_x_limits is None:
+        x_grid_start = np.floor(x_vals.min() / 0.705) * 0.705
+        x_grid_end = np.ceil(x_vals.max() / 0.705) * 0.705
+    else:
+        x_grid_start, x_grid_end = grid_x_limits
+    if grid_y_limits is None:
+        y_grid_start = np.floor(y_vals.min() / 0.505) * 0.505
+        y_grid_end = np.ceil(y_vals.max() / 0.505) * 0.505
+    else:
+        y_grid_start, y_grid_end = grid_y_limits
     grid_xticks = np.arange(x_grid_start, x_grid_end + 0.705, 0.705)
     grid_yticks = np.arange(y_grid_start, y_grid_end + 0.505, 0.505)
     ax.set_xticks(grid_xticks)
@@ -46,8 +54,14 @@ def _apply_ddg_ticks_and_grid(ax, pos_true):
 
     ax.grid(True)
 
-    x_major_end = min(35.0, max(5.0, np.ceil(x_vals.max() / 5.0) * 5.0))
-    y_major_end = min(20.0, max(5.0, np.ceil(y_vals.max() / 5.0) * 5.0))
+    if grid_x_limits is None:
+        x_major_end = min(35.0, max(5.0, np.ceil(x_vals.max() / 5.0) * 5.0))
+    else:
+        x_major_end = grid_x_limits[1]
+    if grid_y_limits is None:
+        y_major_end = min(20.0, max(5.0, np.ceil(y_vals.max() / 5.0) * 5.0))
+    else:
+        y_major_end = grid_y_limits[1]
     major_xticks = np.arange(0.0, x_major_end + 0.1, 5.0)
     major_yticks = np.arange(0.0, y_major_end + 0.1, 5.0)
     ax.set_xticks(major_xticks, minor=True)
@@ -116,8 +130,8 @@ def plot_true_trajectory(pos_true, trajectory_pattern, title="True Trajectory"):
     fig, ax = plt.subplots(figsize=(12, 7))
     ax.plot(pos_true[:, 0], pos_true[:, 1], label="True trajectory")
     if len(pos_true) > 0:
-        ax.scatter(pos_true[0, 0], pos_true[0, 1], marker="o", color="tab:red", s=80, label="Start/End")
-        num_arrows = 8
+        ax.scatter(pos_true[0, 0], pos_true[0, 1], marker="o", color="tab:red", s=80, label="Start")
+        num_arrows = ARROW_COUNT
         if len(pos_true) > 1:
             arrow_bases = np.linspace(0, len(pos_true) - 1, num_arrows + 2)[1:-1]
             arrow_indices = np.clip(arrow_bases.astype(int), 0, len(pos_true) - 2)
@@ -133,7 +147,7 @@ def plot_true_trajectory(pos_true, trajectory_pattern, title="True Trajectory"):
                     "",
                     xy=(end[0], end[1]),
                     xytext=(start[0], start[1]),
-                    arrowprops=dict(arrowstyle="->", color="tab:blue", lw=2.8, mutation_scale=15),
+                    arrowprops=dict(arrowstyle="->", color="tab:blue", lw=ARROW_LINEWIDTH, mutation_scale=15),
                 )
                 used_indices.add(idx)
     ax.set_aspect("equal", adjustable="box")
@@ -146,6 +160,73 @@ def plot_true_trajectory(pos_true, trajectory_pattern, title="True Trajectory"):
 
     if trajectory_pattern in {"trajectory1", "trajectory2", "trajectory3", "trajectory4"}:
         _apply_ddg_ticks_and_grid(ax, pos_true)
+
+
+def plot_trajectory_with_grid(
+    pos,
+    title="Trajectory",
+    grid_x_limits=(0.0, 35.0),
+    grid_y_limits=(0.0, 21.0),
+    cell_size_x=0.705,
+    cell_size_y=0.505,
+    margin=1.0,
+):
+    fig, ax = plt.subplots(figsize=(12, 7))
+    ax.plot(pos[:, 0], pos[:, 1], label="Trajectory")
+    if len(pos) > 0:
+        ax.scatter(pos[0, 0], pos[0, 1], marker="o", color="tab:red", s=80, label="Start")
+        num_arrows = ARROW_COUNT
+        if len(pos) > 1:
+            arrow_bases = np.linspace(0, len(pos) - 1, num_arrows + 2)[1:-1]
+            arrow_indices = np.clip(arrow_bases.astype(int), 0, len(pos) - 2)
+            used_indices = set()
+            for idx in arrow_indices:
+                if idx in used_indices:
+                    idx = min(idx + 1, len(pos) - 2)
+                start = pos[idx]
+                end = pos[idx + 1]
+                if np.allclose(start, end):
+                    continue
+                ax.annotate(
+                    "",
+                    xy=(end[0], end[1]),
+                    xytext=(start[0], start[1]),
+                    arrowprops=dict(arrowstyle="->", color="tab:blue", lw=ARROW_LINEWIDTH, mutation_scale=15),
+                )
+                used_indices.add(idx)
+    ax.set_aspect("equal", adjustable="box")
+    ax.set_xlabel("X [m]", fontsize=LABEL_FONTSIZE)
+    ax.set_ylabel("Y [m]", fontsize=LABEL_FONTSIZE)
+    ax.grid(True)
+    ax.legend()
+    ax.set_title(title, fontsize=TITLE_FONTSIZE)
+    _style_ax(ax)
+
+    ax.set_xlim(grid_x_limits[0] - margin, grid_x_limits[1] + margin)
+    ax.set_ylim(grid_y_limits[0] - margin, grid_y_limits[1] + margin)
+
+    grid_xticks = np.arange(grid_x_limits[0], grid_x_limits[1] + cell_size_x, cell_size_x)
+    grid_yticks = np.arange(grid_y_limits[0], grid_y_limits[1] + cell_size_y, cell_size_y)
+    ax.set_xticks(grid_xticks)
+    ax.set_yticks(grid_yticks)
+
+    xlabels = ["" for _ in grid_xticks]
+    ylabels = ["" for _ in grid_yticks]
+    x0 = np.where(np.isclose(grid_xticks, 0.0))[0]
+    y0 = np.where(np.isclose(grid_yticks, 0.0))[0]
+    if x0.size:
+        xlabels[int(x0[0])] = "0"
+    if y0.size:
+        ylabels[int(y0[0])] = "0"
+    ax.set_xticklabels(xlabels)
+    ax.set_yticklabels(ylabels)
+
+    major_xticks = np.arange(grid_x_limits[0], grid_x_limits[1] + 0.1, 5.0)
+    major_yticks = np.arange(grid_y_limits[0], grid_y_limits[1] + 0.1, 5.0)
+    ax.set_xticks(major_xticks, minor=True)
+    ax.set_yticks(major_yticks, minor=True)
+    ax.set_xticklabels([f"{x:.0f}" for x in major_xticks], minor=True, fontsize=TICK_FONTSIZE)
+    ax.set_yticklabels([f"{y:.0f}" for y in major_yticks], minor=True, fontsize=TICK_FONTSIZE)
 
 
 def plot_acceleration(t, acc_true, f_meas, robot_id=None):
@@ -223,8 +304,8 @@ def plot_positions(
     ax_traj.plot(pos_true[:, 0], pos_true[:, 1], label="True trajectory")
     ax_traj.plot(pos_est[:, 0], pos_est[:, 1], label="Estimated trajectory", alpha=0.7)
     if len(pos_true) > 0:
-        ax_traj.scatter(pos_true[0, 0], pos_true[0, 1], marker="o", color="tab:red", s=80, label="Start/End")
-        num_arrows = 8
+        ax_traj.scatter(pos_true[0, 0], pos_true[0, 1], marker="o", color="tab:red", s=80, label="Start")
+        num_arrows = ARROW_COUNT
         if len(pos_true) > 1:
             arrow_bases = np.linspace(0, len(pos_true) - 1, num_arrows + 2)[1:-1]
             arrow_indices = np.clip(arrow_bases.astype(int), 0, len(pos_true) - 2)
@@ -240,7 +321,7 @@ def plot_positions(
                     "",
                     xy=(end[0], end[1]),
                     xytext=(start[0], start[1]),
-                    arrowprops=dict(arrowstyle="->", color="tab:blue", lw=2.8, mutation_scale=15),
+                    arrowprops=dict(arrowstyle="->", color="tab:blue", lw=ARROW_LINEWIDTH, mutation_scale=15),
                 )
                 used_indices.add(idx)
 
@@ -277,8 +358,12 @@ def plot_positions(
     ax_traj.set_title(title, fontsize=TITLE_FONTSIZE)
     _style_ax(ax_traj)
 
-    if trajectory_pattern in {"trajectory1", "trajectory2", "trajectory3", "trajectory4"}:
-        _apply_ddg_ticks_and_grid(ax_traj, pos_true)
+    _apply_ddg_ticks_and_grid(
+        ax_traj,
+        pos_true,
+        grid_x_limits=(0.0, 35.0),
+        grid_y_limits=(0.0, 21.0),
+    )
 
     # Time series plots for components and error (shared figure for all robots if desired)
     standalone = False

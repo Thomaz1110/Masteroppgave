@@ -8,28 +8,29 @@ import ins_plot
 
 dt = 0.01                           # sample period [s]
 sigma_acc = 0.05                    # accelerometer noise std [m/s^2]
-sigma_bias = 0.003                # accelerometer bias driving noise std [m/s^2/sqrt(s)]
-sigma_vel = 10e-3                    # velocity measurement noise std [m/s]
+sigma_bias = 0.003                  # accelerometer bias driving noise std [m/s^2/sqrt(s)]
+sigma_vel = 10e-3                   # velocity measurement noise std [m/s]
 sigma_range = 0.5                   # range measurement noise std [m]
-vel_threshold = 0.2                 # dominance threshold for dominant-axis detection
-velocity_update_rate_hz = 10.0       # [Hz] dominant-axis zero-velocity update rate
-beacon_range_rate_hz = 2.5         # [Hz] robot0-to-beacon range rate
+vel_threshold = 0.5                 # dominance threshold for dominant-axis detection
+velocity_update_rate_hz = 10.0      # [Hz] dominant-axis zero-velocity update rate
+beacon_range_rate_hz = 2.5           # [Hz] robot0-to-beacon range rate
 robot_range_rate_hz = 5.0           # [Hz] robot-to-robot range rate per pair group
 range_measurement_stop_time = None  # seconds; None => entire run
 standstill_time = 20.0              # [s] initial standstill period for calibration
 
-use_virtual_measurments = True  # If True, use virtual measurements for testing
-beacon_ranging = True
-robot_ranging = True
+use_virtual_measurments = True      # If True, use virtual measurements: dominant-axis velocity updates and initial standstill velocity updates
+beacon_ranging = True              # robot0-to-beacon ranging
+robot_ranging = True               # robot-to-robot ranging
 
-use_true_initial_position = False       # True => all robots start at true positions
+use_true_initial_position = False        # True => all robots start at true positions
 robot0_knows_initial_position = False    # If True, robot 0 starts at true position even when others don't
 initial_pos_radius = 5.0                # [m] radius for random initial offset
-initial_pos_var_robot = 5**2         # covariance for uncertain initial positions
-initial_bias_var = 0.1              # covariance for initial accelerometer bias
+initial_pos_var_robot = 5**2            # covariance for uncertain initial positions
+initial_bias_var = 0.1                  # covariance for initial accelerometer bias
 
-num_robots = 4
-robot_trajectory_patterns = ["trajectory1", "trajectory2", "trajectory3", "trajectory4"]
+num_robots = 3
+duration_s = 300.0
+trajectory_seed_base = 5001
 imu_seed_base = 1002
 range_seed = 3000
 
@@ -50,8 +51,9 @@ for idx in range(num_robots):
         sigma_bias=sigma_bias,
         vel_threshold=vel_threshold,
         standstill_time=standstill_time,
-        trajectory_pattern=robot_trajectory_patterns[idx],
-        imu_seed=imu_seed_base + idx * 37,
+        duration_s=duration_s,
+        trajectory_seed=trajectory_seed_base + idx,
+        imu_seed=imu_seed_base + idx,
     )
     robots.append(robot)
 
@@ -123,11 +125,11 @@ current_robot_pair_group_index = 0
 # Define beacons
 beacon_height = 2.0  # [m]
 beacons_all = np.array([
-    # [2.5, 18.5, beacon_height],
-    # [33.5, 2.5, beacon_height],
-    [17.5, 10.0, beacon_height],
-    # [33.5, 18.5, beacon_height],
-    # [2.5, 2.5, beacon_height],
+    # [2.5, 2.5, beacon_height],          # Bottom-left
+    # [2.5, 18.5, beacon_height],         # Top-left
+    [17.5, 10.0, beacon_height],        # Center
+    # [33.5, 2.5, beacon_height],         # Bottom-right
+    # [33.5, 18.5, beacon_height],        # Top-right
 ])
 
 
@@ -171,12 +173,14 @@ for k in range(1, N):
         and (k % beacon_range_interval_steps == 0)
         and (range_measurement_stop_time is None or t[k] <= range_measurement_stop_time)
     )
+
     robot_due = (
         robot_range_interval_steps is not None
         and (k % robot_range_interval_steps == 0)
         and (range_measurement_stop_time is None or t[k] <= range_measurement_stop_time)
     )
 
+    # Robot0-to-beacon range updates
     if beacon_due:
         beacon = beacons_all[current_beacon_index]
         robot0 = robots[0]
@@ -199,6 +203,7 @@ for k in range(1, N):
         )
         current_beacon_index = (current_beacon_index + 1) % len(beacons_all)
 
+    # Robot-to-robot range updates
     if robot_due and robot_pair_groups:
         pair_group = robot_pair_groups[current_robot_pair_group_index]
         for initiator_idx, reflector_idx in pair_group:
@@ -245,28 +250,17 @@ if plot_vel:
         ins_plot.plot_velocity(robot.t, robot.vel_true, robot.v_nominal, robot_id=idx)
 
 if plot_pos:
-    true_traj_plotted = False
     for idx, robot in enumerate(robots):
         ins_plot.plot_positions(
             robot.t,
             robot.pos_true,
             robot.p_nominal,
-            robot_trajectory_patterns[idx],
-            beacons=beacons_all,
+            "random",
+            beacons=beacons_all if beacon_ranging else None,
             standstill_time=standstill_time,
             robot_id=idx,
             total_robots=num_robots,
         )
-        if (
-            not true_traj_plotted
-            and robot_trajectory_patterns[idx] == "trajectory1"
-        ):
-            ins_plot.plot_true_trajectory(
-                robot.pos_true,
-                robot_trajectory_patterns[idx],
-                title="True Trajectory 1",
-            )
-            true_traj_plotted = True
 
 if plot_bias:
     for idx, robot in enumerate(robots):
@@ -280,5 +274,3 @@ if plot_bias:
         )
 
 plt.show()
-
-
