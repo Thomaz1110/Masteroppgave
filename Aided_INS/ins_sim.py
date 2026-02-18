@@ -12,23 +12,24 @@ sigma_bias = 0.003                  # accelerometer bias driving noise std [m/s^
 sigma_vel = 10e-3                   # velocity measurement noise std [m/s]
 sigma_range = 0.5                   # range measurement noise std [m]
 vel_threshold = 0.5                 # dominance threshold for dominant-axis detection
-velocity_update_rate_hz = 10.0      # [Hz] dominant-axis zero-velocity update rate
-beacon_range_rate_hz = 2.5           # [Hz] robot0-to-beacon range rate
+dominant_axis_method = "true"       # "true" (use ground-truth velocity) or "nominal" (use estimated velocity + threshold)
+velocity_update_rate_hz = 100.0      # [Hz] dominant-axis zero-velocity update rate
+beacon_range_rate_hz = 5.0           # [Hz] robot0-to-beacon range rate
 robot_range_rate_hz = 5.0           # [Hz] robot-to-robot range rate per pair group
 range_measurement_stop_time = None  # seconds; None => entire run
 standstill_time = 20.0              # [s] initial standstill period for calibration
 
 use_virtual_measurments = True      # If True, use virtual measurements: dominant-axis velocity updates and initial standstill velocity updates
 beacon_ranging = True              # robot0-to-beacon ranging
-robot_ranging = True               # robot-to-robot ranging
+robot_ranging = False               # robot-to-robot ranging
 
-use_true_initial_position = False        # True => all robots start at true positions
-robot0_knows_initial_position = False    # If True, robot 0 starts at true position even when others don't
+use_true_initial_position = True        # True => all robots start at true positions
+robot0_knows_initial_position = True    # If True, robot 0 starts at true position even when others don't
 initial_pos_radius = 5.0                # [m] radius for random initial offset
 initial_pos_var_robot = 5**2            # covariance for uncertain initial positions
 initial_bias_var = 0.1                  # covariance for initial accelerometer bias
 
-num_robots = 3
+num_robots = 1
 duration_s = 300.0
 trajectory_seed_base = 5001
 imu_seed_base = 1002
@@ -50,6 +51,7 @@ for idx in range(num_robots):
         sigma_acc=sigma_acc,
         sigma_bias=sigma_bias,
         vel_threshold=vel_threshold,
+        dominant_axis_method=dominant_axis_method,
         standstill_time=standstill_time,
         duration_s=duration_s,
         trajectory_seed=trajectory_seed_base + idx,
@@ -125,11 +127,11 @@ current_robot_pair_group_index = 0
 # Define beacons
 beacon_height = 2.0  # [m]
 beacons_all = np.array([
-    # [2.5, 2.5, beacon_height],          # Bottom-left
-    # [2.5, 18.5, beacon_height],         # Top-left
+    [2.5, 2.5, beacon_height],          # Bottom-left
+    [2.5, 18.5, beacon_height],         # Top-left
     [17.5, 10.0, beacon_height],        # Center
-    # [33.5, 2.5, beacon_height],         # Bottom-right
-    # [33.5, 18.5, beacon_height],        # Top-right
+    [33.5, 2.5, beacon_height],         # Bottom-right
+    [33.5, 18.5, beacon_height],        # Top-right
 ])
 
 

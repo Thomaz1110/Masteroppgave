@@ -11,6 +11,7 @@ class Robot:
         sigma_acc,
         sigma_bias,
         vel_threshold,
+        dominant_axis_method,
         standstill_time,
         duration_s,
         trajectory_seed,
@@ -19,6 +20,11 @@ class Robot:
         self.robot_id = robot_id
         self.dt = dt
         self.vel_threshold = vel_threshold
+        if dominant_axis_method not in {"true", "nominal"}:
+            raise ValueError(
+                "dominant_axis_method must be 'true' or 'nominal'"
+            )
+        self.dominant_axis_method = dominant_axis_method
 
         self.t, self.pos_true, self.vel_true, self.acc_true = random_trajectory.random_trajectory_generator(
             dt=dt,
@@ -42,15 +48,33 @@ class Robot:
         acc_sample = self.f_imu[k - 1]
         acc_ins = acc_sample - self.b_nominal[k - 1]
         self.v_nominal[k] = self.v_nominal[k - 1] + acc_ins * self.dt
-        self.p_nominal[k] = self.p_nominal[k - 1] + self.v_nominal[k - 1] * self.dt
+        self.p_nominal[k] = self.p_nominal[k - 1] + self.v_nominal[k - 1] * self.dt + 0.5 * acc_ins * self.dt**2
         self.b_nominal[k] = self.b_nominal[k - 1]
 
     def determine_dominant_axis(self, k):
-        prev_v = self.v_nominal[k - 1]
-        if abs(prev_v[0]) > self.vel_threshold and abs(prev_v[0]) > abs(prev_v[1]):
+        if self.dominant_axis_method == "nominal":
+            prev_v = self.v_nominal[k - 1]
+            if abs(prev_v[0]) > self.vel_threshold and abs(prev_v[0]) > abs(prev_v[1]):
+                return "x"
+            if abs(prev_v[1]) > self.vel_threshold and abs(prev_v[1]) > abs(prev_v[0]):
+                return "y"
+            return None
+
+        true_vel = self.vel_true[k]
+        # In "true" mode, select the dominant non-zero axis robustly.
+        # A tolerance avoids axis flips from tiny numerical leftovers at turns.
+        eps = 1e-9
+        vx_abs = abs(true_vel[0])
+        vy_abs = abs(true_vel[1])
+        if vx_abs <= eps and vy_abs <= eps:
+            return None
+        if vx_abs > vy_abs + eps:
             return "x"
-        if abs(prev_v[1]) > self.vel_threshold and abs(prev_v[1]) > abs(prev_v[0]):
+        if vy_abs > vx_abs + eps:
             return "y"
+        # Tie-breaker for near-equality: keep deterministic behavior.
+        if vx_abs >= vy_abs:
+            return "x"
         return None
 
     def apply_correction(self, k, delta):
