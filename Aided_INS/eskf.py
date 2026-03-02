@@ -71,8 +71,8 @@ class ESKFMultiRobot:
 
  
     def predict(self):
-        self.deltax = self.Ad @ self.deltax
-        self.P = self.Ad @ self.P @ self.Ad.T + self.Ed @ self.Qd @ self.Ed.T
+        self.deltax = self.Ad @ self.deltax # not really necessary since deltax is reset after each update, but included for completeness
+        self.P = self.Ad @ self.P @ self.Ad.T + self.Ed @ self.Qd @ self.Ed.T 
 
     def update(self, robot_index, update_type, y_meas, y_ins_hat, initiator_nom=None, reflector_nom=None, reflector_index=None):
         initiator_offset = robot_index * 6                            # 6 states per robot
@@ -123,7 +123,7 @@ class ESKFMultiRobot:
         r = delta_y - C @ self.deltax
         S = C @ self.P @ C.T + R
         K = self.P @ C.T @ np.linalg.inv(S)
-        self.deltax = self.deltax + K @ r
+        self.deltax = K @ r
         I = np.eye(self.state_dim)
         self.P = (I - K @ C) @ self.P @ (I - K @ C).T + K @ R @ K.T
 

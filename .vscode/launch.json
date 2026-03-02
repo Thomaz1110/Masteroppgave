@@ -1,0 +1,17 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Run ins_sim",
+      "type": "python",
+      "request": "launch",
+      "program": "${workspaceFolder}/Aided_INS/ins_sim.py",
+      "console": "integratedTerminal",
+      "python": "${workspaceFolder}/.venv/bin/python",
+      "env": {
+        "MPLCONFIGDIR": "${workspaceFolder}/.matplotlib",
+        "MPLBACKEND": "MacOSX"
+      }
+    }
+  ]
+}

@@ -13,7 +13,7 @@ sigma_vel = 10e-3                   # velocity measurement noise std [m/s]
 sigma_range = 0.5                   # range measurement noise std [m]
 vel_threshold = 0.5                 # dominance threshold for dominant-axis detection
 dominant_axis_method = "true"       # "true" (use ground-truth velocity) or "nominal" (use estimated velocity + threshold)
-velocity_update_rate_hz = 100.0      # [Hz] dominant-axis zero-velocity update rate
+velocity_update_rate_hz = 10.0      # [Hz] dominant-axis zero-velocity update rate
 beacon_range_rate_hz = 5.0           # [Hz] robot0-to-beacon range rate
 robot_range_rate_hz = 5.0           # [Hz] robot-to-robot range rate per pair group
 range_measurement_stop_time = None  # seconds; None => entire run
@@ -167,6 +167,13 @@ for k in range(1, N):
                 y_ins_hat = np.array([robot.v_nominal[k, 0], robot.v_nominal[k, 1]])
                 kf.update(idx, "velocity_calibration", y_meas, y_ins_hat)
 
+        # applying and resetting corrections after every type of update
+        corrections = kf.get_state_correction()         # Get state corrections for all robots
+        for idx, robot in enumerate(robots):            
+            robot.apply_correction(k, corrections[idx]) # Apply corrections to each robot's nominal state
+        kf.reset_error_state()                          # Reset error state after applying corrections!
+
+
    
 
     # Range updates
@@ -205,6 +212,13 @@ for k in range(1, N):
         )
         current_beacon_index = (current_beacon_index + 1) % len(beacons_all)
 
+        # applying and resetting corrections after every type of update 
+        corrections = kf.get_state_correction()         # Get state corrections for all robots
+        for idx, robot in enumerate(robots):            
+            robot.apply_correction(k, corrections[idx]) # Apply corrections to each robot's nominal state
+        kf.reset_error_state()                          # Reset error state after applying corrections
+
+
     # Robot-to-robot range updates
     if robot_due and robot_pair_groups:
         pair_group = robot_pair_groups[current_robot_pair_group_index]
@@ -233,13 +247,11 @@ for k in range(1, N):
             )
         current_robot_pair_group_index = (current_robot_pair_group_index + 1) % len(robot_pair_groups)
 
-
-        
-
-    corrections = kf.get_state_correction()         # Get state corrections for all robots
-    for idx, robot in enumerate(robots):            
-        robot.apply_correction(k, corrections[idx]) # Apply corrections to each robot's nominal state
-    kf.reset_error_state()                          # Reset error state after applying corrections
+        # applying and resetting corrections after every type of update
+        corrections = kf.get_state_correction()         # Get state corrections for all robots
+        for idx, robot in enumerate(robots):            
+            robot.apply_correction(k, corrections[idx]) # Apply corrections to each robot's nominal state
+        kf.reset_error_state()                          # Reset error state after applying corrections
 
 
 # Plotting
