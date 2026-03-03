@@ -46,50 +46,48 @@ class ESKFSingleRobot:
         self.deltax = self.Ad @ self.deltax
         self.P = self.Ad @ self.P @ self.Ad.T + self.Ed @ self.Qd @ self.Ed.T
 
-    def _update_linear(self, C, delta_y, R):
-        r = delta_y - C @ self.deltax
-        S = C @ self.P @ C.T + R
-        K = self.P @ C.T @ np.linalg.inv(S)
+    def update(self, H, delta_y, R):
+        r = delta_y - H @ self.deltax
+        S = H @ self.P @ H.T + R
+        K = self.P @ H.T @ np.linalg.inv(S)
         self.deltax = K @ r
         I = np.eye(self.state_dim)
-        self.P = (I - K @ C) @ self.P @ (I - K @ C).T + K @ R @ K.T
+        self.P = (I - K @ H) @ self.P @ (I - K @ H).T + K @ R @ K.T
 
-    def update_velocity_x(self, z, R):
-        C = np.zeros((1, self.state_dim))
-        C[0, 2] = 1.0
-        delta_y = np.array([[float(z)]])
-        Rm = np.array([[float(R)]]) if np.isscalar(R) else np.asarray(R, dtype=float).reshape(1, 1)
-        self._update_linear(C, delta_y, Rm)
+    def update_dominant_axis_velocity(self, dominant_axis, y_meas, y_ins_hat, R):
+        if dominant_axis == "x":
+            vel_error_idx = 3               # y-velocity error index in state vector H
+        elif dominant_axis == "y":
+            vel_error_idx = 2               # x-velocity error index in state vector H
+        else:
+            raise ValueError("dominant_axis must be 'x' or 'y'")
 
-    def update_velocity_y(self, z, R):
-        C = np.zeros((1, self.state_dim))
-        C[0, 3] = 1.0
-        delta_y = np.array([[float(z)]])
-        Rm = np.array([[float(R)]]) if np.isscalar(R) else np.asarray(R, dtype=float).reshape(1, 1)
-        self._update_linear(C, delta_y, Rm)
+        H = np.zeros((1, self.state_dim))
+        H[0, vel_error_idx] = 1.0
+        delta_y = np.array([[float(y_meas) - float(y_ins_hat)]])
+        R = np.array([[float(R)]]) if np.isscalar(R) else np.asarray(R, dtype=float).reshape(1, 1)
+        self.update(H, delta_y, R)
 
-    def update_velocity_calibration(self, z2, R2x2):
-        C = np.zeros((2, self.state_dim))
-        C[0, 2] = 1.0
-        C[1, 3] = 1.0
-        delta_y = np.asarray(z2, dtype=float).reshape(2, 1)
-        Rm = np.asarray(R2x2, dtype=float).reshape(2, 2)
-        self._update_linear(C, delta_y, Rm)
+    def update_velocity_calibration(self, y_meas, y_ins_hat, R):
+        H = np.zeros((2, self.state_dim))
+        H[0, 2] = 1.0
+        H[1, 3] = 1.0
+        delta_y = np.asarray(y_meas, dtype=float).reshape(2, 1) - np.asarray(y_ins_hat, dtype=float).reshape(2, 1)
+        R = np.asarray(R, dtype=float).reshape(2, 2)
+        self.update(H, delta_y, R)
 
-    def update_beacon_range(self, z_range, beacon_pos_2d, nominal_pos_2d, R):
-        beacon_pos_2d = np.asarray(beacon_pos_2d, dtype=float).reshape(2)
-        nominal_pos_2d = np.asarray(nominal_pos_2d, dtype=float).reshape(2)
-        diff = nominal_pos_2d - beacon_pos_2d
-        dist = max(np.linalg.norm(diff), 1e-9)
+    def update_beacon_range(self, z, initiator_nom, reflector_nom, R):
+        diff_nom = initiator_nom - reflector_nom
+        dist_nom = max(np.linalg.norm(diff_nom), 1e-9)
 
-        C = np.zeros((1, self.state_dim))
-        C[0, 0] = diff[0] / dist
-        C[0, 1] = diff[1] / dist
+        H = np.zeros((1, self.state_dim))
+        H[0, 0] = diff_nom[0] / dist_nom
+        H[0, 1] = diff_nom[1] / dist_nom
 
-        y_ins_hat = dist
-        delta_y = np.array([[float(z_range) - y_ins_hat]])
-        Rm = np.array([[float(R)]]) if np.isscalar(R) else np.asarray(R, dtype=float).reshape(1, 1)
-        self._update_linear(C, delta_y, Rm)
+        y_ins_hat = dist_nom
+        delta_y = np.array([[float(z) - y_ins_hat]])
+        R = np.array([[float(R)]]) if np.isscalar(R) else np.asarray(R, dtype=float).reshape(1, 1)
+        self.update(H, delta_y, R)
 
     def get_state_correction(self):
         return self.deltax.copy()

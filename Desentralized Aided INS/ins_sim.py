@@ -13,20 +13,19 @@ sigma_range = 0.5                   # range measurement noise std [m]
 vel_threshold = 0.5                 # dominance threshold for dominant-axis detection
 dominant_axis_method = "true"       # "true" (use ground-truth velocity) or "nominal" (use estimated velocity + threshold)
 velocity_update_rate_hz = 10.0      # [Hz] dominant-axis zero-velocity update rate
-beacon_range_rate_hz = 5.0           # [Hz] robot0-to-beacon range rate
+beacon_range_rate_hz = 5.0           # [Hz] robot-to-beacon range rate
 range_measurement_stop_time = None  # seconds; None => entire run
 standstill_time = 20.0              # [s] initial standstill period for calibration
 
-use_virtual_measurments = True      # If True, use virtual measurements: dominant-axis velocity updates and initial standstill velocity updates
-beacon_ranging = True              # robot0-to-beacon ranging
+use_virtual_measurements = True      # If True, use virtual measurements: dominant-axis velocity updates and initial standstill velocity updates
+beacon_ranging = True              # robot-to-beacon ranging
 
 use_true_initial_position = True        # True => all robots start at true positions
-robot0_knows_initial_position = True    # If True, robot 0 starts at true position even when others don't
 initial_pos_radius = 5.0                # [m] radius for random initial offset
 initial_pos_var_robot = 5**2            # covariance for uncertain initial positions
 initial_bias_var = 0.1                  # covariance for initial accelerometer bias
 
-num_robots = 2
+num_robots = 1
 duration_s = 300.0
 trajectory_seed_base = 5001
 imu_seed_base = 1002
@@ -59,7 +58,6 @@ for idx in range(num_robots):
 initialize_robot_positions(
     robots,
     use_true_initial_position,
-    robot0_knows_initial_position,
     initial_pos_radius,
     grid_x_limits=(0.0, 35.0),
     grid_y_limits=(0.0, 20.0),
@@ -74,7 +72,7 @@ if any(robot.N != N for robot in robots):
 
 # Initialize covariance P
 for idx in range(num_robots):
-    use_true = use_true_initial_position or (idx == 0 and robot0_knows_initial_position)
+    use_true = use_true_initial_position
     kf = robots[idx].eskf
     if use_true:
         kf.P[0, 0] = 10e-3
@@ -117,7 +115,7 @@ for k in range(1, N):
         robot.propagate_nominal(k)
         robot.eskf.predict(acc_meas_2d=robot.f_imu[k - 1], dt=dt)
 
-    if use_virtual_measurments:
+    if use_virtual_measurements:
         for robot in robots:
             updated = False
 
@@ -127,20 +125,21 @@ for k in range(1, N):
                 and (k % velocity_update_interval_steps == 0)
             ):
                 dominant_axis = robot.determine_dominant_axis(k)
-                if dominant_axis == "x":
-                    z = 0.0 - robot.v_nominal[k, 1]
-                    robot.eskf.update_velocity_y(z, sigma_vel**2)
-                    updated = True
-                elif dominant_axis == "y":
-                    z = 0.0 - robot.v_nominal[k, 0]
-                    robot.eskf.update_velocity_x(z, sigma_vel**2)
+                if dominant_axis in {"x", "y"}:
+                    non_dominant_idx = 1 if dominant_axis == "x" else 0
+                    y_meas = 0.0
+                    y_ins_hat = robot.v_nominal[k, non_dominant_idx]
+                    robot.eskf.update_dominant_axis_velocity(
+                        dominant_axis, y_meas, y_ins_hat, sigma_vel**2
+                    )
                     updated = True
 
             # Initial standstill velocity calibration updates (both axes)
             if t[k] <= standstill_time:
-                z2 = np.array([0.0 - robot.v_nominal[k, 0], 0.0 - robot.v_nominal[k, 1]])
-                R2 = np.diag([sigma_vel**2, sigma_vel**2])
-                robot.eskf.update_velocity_calibration(z2, R2)
+                y_meas = np.array([0.0, 0.0])
+                y_ins_hat = np.array([robot.v_nominal[k, 0], robot.v_nominal[k, 1]])
+                R = np.diag([sigma_vel**2, sigma_vel**2])
+                robot.eskf.update_velocity_calibration(y_meas, y_ins_hat, R)
                 updated = True
 
             if updated:
@@ -156,23 +155,25 @@ for k in range(1, N):
         and (range_measurement_stop_time is None or t[k] <= range_measurement_stop_time)
     )
 
-    # Robot0-to-beacon range updates
+    # Robot-to-beacon range updates
     if beacon_due:
-        beacon = beacons_all[current_beacon_index]
-        robot0 = robots[0]
-        initiator_true = np.array([robot0.pos_true[k, 0], robot0.pos_true[k, 1], 0.0])
-        initiator_nominal_2d = np.array([robot0.p_nominal[k, 0], robot0.p_nominal[k, 1]])
-        reflector_true = beacon
-        diff_true = initiator_true - reflector_true
-        y_meas = np.linalg.norm(diff_true) + range_rng.normal(scale=sigma_range)
-        y_meas = max(y_meas, 0.0)
-        robot0.eskf.update_beacon_range(
-            z_range=y_meas,
-            beacon_pos_2d=beacon[:2],
-            nominal_pos_2d=initiator_nominal_2d,
-            R=sigma_range**2,
-        )
-        robot0.apply_filter_correction(k)
+        for robot in robots:
+            beacon = beacons_all[current_beacon_index]                                          # 3D beacon position
+            initiator_true = np.array([robot.pos_true[k, 0], robot.pos_true[k, 1], 0.0])        # 3D robot position (z=0)
+            initiator_nominal = np.array([robot.p_nominal[k, 0], robot.p_nominal[k, 1], 0.0])   # 3D nominal robot position
+            beacon_true, beacon_nominal = beacon, beacon 
+
+            diff_true = initiator_true - beacon_true                                         # True 3D vector for range measurement calculation            
+            y_meas = np.linalg.norm(diff_true) + range_rng.normal(scale=sigma_range)            # Simulated range measurement with noise
+            y_meas = max(y_meas, 0.0)                                                           # Ensure non-negative range measurement         
+            
+            robot.eskf.update_beacon_range(
+                z=y_meas,
+                initiator_nom=initiator_nominal,
+                reflector_nom=beacon_nominal,
+                R=sigma_range**2,
+            )
+            robot.apply_filter_correction(k)
         current_beacon_index = (current_beacon_index + 1) % len(beacons_all)
 
 

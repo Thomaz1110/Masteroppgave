@@ -98,7 +98,6 @@ class Robot:
 def initialize_robot_positions(
     robots,
     use_true_initial_position,
-    robot0_true_initial_position,
     initial_pos_radius,
     grid_x_limits=(0.0, 35.0),
     grid_y_limits=(0.0, 20.0),
@@ -119,10 +118,8 @@ def initialize_robot_positions(
     grid_x_limits, grid_y_limits : tuple
     Allowed bounds for x and y coordinates.
     """
-    for idx, robot in enumerate(robots):
+    for robot in robots:
         use_true = use_true_initial_position
-        if idx == 0 and robot0_true_initial_position:
-            use_true = True
         if use_true:
             robot.p_nominal[0] = robot.pos_true[0]
         else:
