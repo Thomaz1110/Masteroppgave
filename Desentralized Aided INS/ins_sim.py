@@ -9,32 +9,38 @@ from config import (
     sigma_bias,
     sigma_vel,
     sigma_range,
-    vel_threshold,
-    dominant_axis_method,
-    velocity_update_rate_hz,
-    beacon_range_rate_hz,
-    range_measurement_stop_time,
-    standstill_time,
-    use_virtual_measurements,
-    beacon_ranging,
-    use_true_initial_position,
     initial_pos_radius,
     initial_pos_var_robot,
     initial_bias_var,
-    num_robots,
-    duration_s,
     trajectory_seed_base,
     imu_seed_base,
     range_seed,
-    plot_acc,
-    plot_vel,
-    plot_pos,
-    plot_bias,
     grid_x_limits,
     grid_y_limits,
-    beacons_all,
 )
 
+
+num_robots = 1
+duration_s = 300.0
+standstill_time = 20.0              # [s] initial standstill period for calibration
+
+vel_threshold = 0.5                 # [m/s] velocity threshold for dominant-axis detection
+dominant_axis_method = "true"       # "true" (use ground-truth velocity) or "nominal" (use estimated velocity + threshold)
+velocity_update_rate_hz = 10.0      # [Hz] dominant-axis zero-velocity update rate
+
+beacon_range_rate_hz = 5.0          # [Hz] robot-to-beacon range rate
+range_measurement_stop_time = None  # seconds; None => entire run
+
+
+use_virtual_measurements = True      # If True, use virtual measurements: dominant-axis velocity updates and initial standstill velocity updates
+beacon_ranging = True                # robot-to-beacon ranging
+use_true_initial_position = True     # True => all robots start at true positions
+
+
+plot_acc = 0
+plot_vel = 0
+plot_pos = 1
+plot_bias = 1
 
 
 
@@ -96,6 +102,16 @@ else:
 
 range_rng = np.random.default_rng(range_seed)
 current_beacon_index = 0
+
+# Define beacons
+beacon_height = 2.0  # [m]
+beacons_all = np.array([
+    [2.5, 2.5, beacon_height],          # Bottom-left
+    [2.5, 18.5, beacon_height],         # Top-left
+    [17.5, 10.0, beacon_height],        # Center
+    [33.5, 2.5, beacon_height],         # Bottom-right
+    [33.5, 18.5, beacon_height],        # Top-right
+])
 
 
 for k in range(1, N):
