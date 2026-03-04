@@ -1,3 +1,12 @@
+"""
+Robot model for decentralized aided INS simulation.
+
+Contains:
+- "Robot": generates true trajectory + IMU data, propagates nominal INS states,
+  performs dominant-axis logic, and applies local ESKF corrections.
+- "initialize_robot_positions": sets initial nominal positions (true or random offset).
+"""
+
 import numpy as np
 import random_trajectory
 import imu_acc

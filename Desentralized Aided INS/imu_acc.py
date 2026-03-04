@@ -1,3 +1,11 @@
+"""
+IMU accelerometer simulation utilities.
+
+Contains:
+- "sim_accelerometer": simulates 2D accelerometer measurements from true acceleration
+  by adding a random-walk bias and white measurement noise.
+"""
+
 import numpy as np
 
 
