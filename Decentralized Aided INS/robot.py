@@ -52,6 +52,7 @@ class Robot:
         self.v_nominal = np.zeros_like(self.vel_true)
         self.b_nominal = np.zeros_like(self.f_imu)
         self.eskf = ESKFSingleRobot(dt=dt, sigma_acc=sigma_acc, sigma_bias=sigma_bias)
+        self.V_coop = 1 << int(self.robot_id)  # cooperative correlation-tracking bitmask
 
        
 
@@ -103,6 +104,53 @@ class Robot:
     def get_position_measurement(self, k, rng, sigma_pos):
         return self.pos_true[k] + rng.normal(scale=sigma_pos, size=2)
 
+    def get_coop_packet(self, k):
+        return {
+            "id": int(self.robot_id),
+            "p_hat": self.p_nominal[k].copy(),
+            "P": self.eskf.P.copy(),
+            "V": int(self.V_coop),
+        }
+
+    def apply_coop_update_from_initiator(self, k, msg):
+        self.eskf.deltax = np.asarray(msg["delta"], dtype=float).reshape(6, 1)
+        self.eskf.P = np.asarray(msg["P_new"], dtype=float).reshape(6, 6)
+        self.apply_filter_correction(k)
+        self.V_coop = int(msg["V_new"])
+
+    def do_robot_range_as_initiator(self, k, y_meas, R, reflector_packet):
+        p_i = self.p_nominal[k].copy()
+        Pi = self.eskf.P.copy()
+        Vi = int(self.V_coop)
+
+        p_j = np.asarray(reflector_packet["p_hat"], dtype=float).reshape(2)
+        Pj = np.asarray(reflector_packet["P"], dtype=float).reshape(6, 6)
+        Vj = int(reflector_packet["V"])
+
+        di, Pi_new, dj, Pj_new, V_new, omega_used = ESKFSingleRobot.coop_robot_range_mutualistic(
+            Pi=Pi,
+            Pj=Pj,
+            p_i=p_i,
+            p_j=p_j,
+            y_meas=y_meas,
+            R=R,
+            Vi=Vi,
+            Vj=Vj,
+        )
+
+        self.eskf.deltax = di
+        self.eskf.P = Pi_new
+        self.apply_filter_correction(k)
+        self.V_coop = int(V_new)
+
+        msg_to_reflector = {
+            "delta": dj,
+            "P_new": Pj_new,
+            "V_new": int(V_new),
+            "omega_used": omega_used,
+        }
+        return msg_to_reflector
+
 
 def initialize_robot_positions(
     robots,
@@ -128,8 +176,7 @@ def initialize_robot_positions(
     Allowed bounds for x and y coordinates.
     """
     for robot in robots:
-        use_true = use_true_initial_position
-        if use_true:
+        if use_true_initial_position:
             robot.p_nominal[0] = robot.pos_true[0]
         else:
             candidate = robot.pos_true[0].copy()

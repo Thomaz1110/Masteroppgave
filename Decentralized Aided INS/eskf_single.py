@@ -94,3 +94,100 @@ class ESKFSingleRobot:
 
     def reset_error_state(self):
         self.deltax = np.zeros_like(self.deltax)
+
+    @staticmethod
+    def coop_robot_range_mutualistic(
+        Pi, Pj, p_i, p_j, y_meas, R, Vi, Vj, omega_grid=None
+    ):
+        """
+        Mutualistic cooperative range update for two robots (i initiator, j reflector).
+
+        Returns
+        -------
+        delta_i : (6,1) ndarray
+        Pi_new : (6,6) ndarray
+        delta_j : (6,1) ndarray
+        Pj_new : (6,6) ndarray
+        V_new : int
+            Bitmask union of cooperative histories.
+        omega_used : float | None
+            Used covariance-intersection weight when correlated, otherwise None.
+        """
+        Pi = np.asarray(Pi, dtype=float).reshape(6, 6)
+        Pj = np.asarray(Pj, dtype=float).reshape(6, 6)
+        p_i = np.asarray(p_i, dtype=float).reshape(2)
+        p_j = np.asarray(p_j, dtype=float).reshape(2)
+        R = np.array([[float(R)]]) if np.isscalar(R) else np.asarray(R, dtype=float).reshape(1, 1)
+
+        if omega_grid is None:
+            omega_grid = np.linspace(0.05, 0.95, 19)
+
+        diff_nom = p_i - p_j
+        dist_nom = max(np.linalg.norm(diff_nom), 1e-9)
+
+        y_ins_hat = dist_nom
+        delta_y = np.array([[float(y_meas - y_ins_hat)]])
+
+        u = diff_nom / dist_nom
+        Hi = np.zeros((1, 6))
+        Hj = np.zeros((1, 6))
+        Hi[0, 0:2] = u
+        Hj[0, 0:2] = -u
+
+        correlated = (int(Vi) & int(Vj)) != 0
+
+        def logdet_spd(P):
+            L = np.linalg.cholesky(P)
+            return 2.0 * np.sum(np.log(np.diag(L)))
+
+        def joint_update(omega=None):
+            Pbar = np.zeros((12, 12))
+            if omega is None:
+                Pbar[:6, :6] = Pi
+                Pbar[6:, 6:] = Pj
+            else:
+                Pbar[:6, :6] = Pi / omega
+                Pbar[6:, 6:] = Pj / (1.0 - omega)
+
+            H = np.zeros((1, 12))
+            H[0, :6] = Hi
+            H[0, 6:] = Hj
+
+            S = H @ Pbar @ H.T + R
+            K = Pbar @ H.T @ np.linalg.inv(S)
+            delta = K @ delta_y
+
+            I = np.eye(12)
+            Pplus = (I - K @ H) @ Pbar @ (I - K @ H).T + K @ R @ K.T
+
+            di = delta[:6].reshape(6, 1)
+            dj = delta[6:].reshape(6, 1)
+            Pi_new = Pplus[:6, :6]
+            Pj_new = Pplus[6:, 6:]
+            return di, dj, Pi_new, Pj_new
+
+        omega_used = None
+        if not correlated:
+            di, dj, Pi_new, Pj_new = joint_update(omega=None)
+        else:
+            best_w = None
+            best_J = np.inf
+            for w in omega_grid:
+                w = float(w)
+                try:
+                    _, _, Pi_tmp, Pj_tmp = joint_update(omega=w)
+                    J = logdet_spd(Pi_tmp) + logdet_spd(Pj_tmp)
+                except np.linalg.LinAlgError:
+                    continue
+                if J < best_J:
+                    best_J = J
+                    best_w = w
+
+            if best_w is None:
+                best_w = 0.5
+
+            omega_used = best_w
+            di, dj, Pi_new, Pj_new = joint_update(omega=best_w)
+
+        V_new = int(Vi) | int(Vj)
+        return di, Pi_new, dj, Pj_new, V_new, omega_used

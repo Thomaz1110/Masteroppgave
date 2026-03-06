@@ -325,7 +325,7 @@ def plot_positions(
                 )
                 used_indices.add(idx)
 
-    if beacons is not None and len(beacons) > 0 and (robot_id is None or robot_id == 0):
+    if beacons is not None and len(beacons) > 0:
         beacons_xy = beacons[:, :2]
         ax_traj.scatter(beacons_xy[:, 0], beacons_xy[:, 1], marker="o", color="tab:green", label="Known beacons", s=80)
     if unknown_beacon_true is not None and (robot_id is None or robot_id == 0):

@@ -20,21 +20,24 @@ from config import (
 )
 
 
-num_robots = 1
+num_robots = 2
 duration_s = 300.0
 standstill_time = 20.0              # [s] initial standstill period for calibration
+use_true_initial_position = True     # True => all robots start at true positions
+
 
 vel_threshold = 0.5                 # [m/s] velocity threshold for dominant-axis detection
 dominant_axis_method = "true"       # "true" (use ground-truth velocity) or "nominal" (use estimated velocity + threshold)
 velocity_update_rate_hz = 10.0      # [Hz] dominant-axis zero-velocity update rate
 
 beacon_range_rate_hz = 5.0          # [Hz] robot-to-beacon range rate
+robot_range_rate_hz = 1.0           # [Hz] robot-to-robot range rate
 range_measurement_stop_time = None  # seconds; None => entire run
 
 
 use_virtual_measurements = True      # If True, use virtual measurements: dominant-axis velocity updates and initial standstill velocity updates
-beacon_ranging = True                # robot-to-beacon ranging
-use_true_initial_position = True     # True => all robots start at true positions
+beacon_ranging = False                # robot-to-beacon ranging
+robot_ranging = True                # robot-to-robot ranging
 
 
 plot_acc = 0
@@ -100,7 +103,15 @@ if beacon_ranging and beacon_range_rate_hz > 0.0:
 else:
     beacon_range_interval_steps = None
 
-range_rng = np.random.default_rng(range_seed)
+# Determine robot range measurement interval
+if robot_ranging and robot_range_rate_hz > 0.0:
+    robot_range_interval_steps = max(1, int(round(1.0 / (robot_range_rate_hz * dt))))
+else:
+    robot_range_interval_steps = None
+
+range_rngs = [
+    np.random.default_rng(range_seed + idx) for idx in range(num_robots)
+]
 current_beacon_index = 0
 
 # Define beacons
@@ -158,17 +169,22 @@ for k in range(1, N):
         and (k % beacon_range_interval_steps == 0)
         and (range_measurement_stop_time is None or t[k] <= range_measurement_stop_time)
     )
+    robot_range_due = (
+        robot_range_interval_steps is not None
+        and (k % robot_range_interval_steps == 0)
+        and (range_measurement_stop_time is None or t[k] <= range_measurement_stop_time)
+    )
 
     # Robot-to-beacon range updates
     if beacon_due:
-        for robot in robots:
+        for idx, robot in enumerate(robots):
             beacon = beacons_all[current_beacon_index]                                          # 3D beacon position
             initiator_true = np.array([robot.pos_true[k, 0], robot.pos_true[k, 1], 0.0])        # 3D robot position (z=0)
             initiator_nominal = np.array([robot.p_nominal[k, 0], robot.p_nominal[k, 1], 0.0])   # 3D nominal robot position
             beacon_true, beacon_nominal = beacon, beacon 
 
             diff_true = initiator_true - beacon_true                                         # True 3D vector for range measurement calculation            
-            y_meas = np.linalg.norm(diff_true) + range_rng.normal(scale=sigma_range)            # Simulated range measurement with noise
+            y_meas = np.linalg.norm(diff_true) + range_rngs[idx].normal(scale=sigma_range)            # Simulated range measurement with noise
             y_meas = max(y_meas, 0.0)                                                           # Ensure non-negative range measurement         
             
             robot.eskf.update_beacon_range(
@@ -179,6 +195,26 @@ for k in range(1, N):
             )
             robot.apply_filter_correction(k)
         current_beacon_index = (current_beacon_index + 1) % len(beacons_all)
+
+    if robot_range_due and num_robots == 2:
+        initiator_robot = robots[0]
+        reflector_robot = robots[1]
+
+        reflector_packet = reflector_robot.get_coop_packet(k)
+
+        initiator_true = np.array([initiator_robot.pos_true[k, 0], initiator_robot.pos_true[k, 1], 0.0])
+        reflector_true = np.array([reflector_robot.pos_true[k, 0], reflector_robot.pos_true[k, 1], 0.0])
+        diff_true = initiator_true - reflector_true
+        y_meas = np.linalg.norm(diff_true) + range_rngs[0].normal(scale=sigma_range)
+        y_meas = max(y_meas, 0.0)
+
+        msg_to_reflector = initiator_robot.do_robot_range_as_initiator(
+            k, y_meas, sigma_range**2, reflector_packet
+        )
+        reflector_robot.apply_coop_update_from_initiator(k, msg_to_reflector)
+
+
+ 
 
 
 # Plotting
