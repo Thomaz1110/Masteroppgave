@@ -60,7 +60,7 @@ class Robot:
         acc_sample = self.f_imu[k - 1]
         acc_ins = acc_sample - self.b_nominal[k - 1]
         self.v_nominal[k] = self.v_nominal[k - 1] + acc_ins * self.dt
-        self.p_nominal[k] = self.p_nominal[k - 1] + self.v_nominal[k - 1] * self.dt + 0.5 * acc_ins * self.dt**2
+        self.p_nominal[k] = self.p_nominal[k - 1] + self.v_nominal[k - 1] * self.dt #+ 0.5 * acc_ins * self.dt**2, removed for consistency with centralized case
         self.b_nominal[k] = self.b_nominal[k - 1]
 
     def determine_dominant_axis(self, k):
@@ -118,7 +118,7 @@ class Robot:
         self.apply_filter_correction(k)
         self.V_coop = int(msg["V_new"])
 
-    def do_robot_range_as_initiator(self, k, y_meas, R, reflector_packet):
+    def do_robot_range_as_initiator(self, k, y_meas, R, reflector_packet, coop_type):
         p_i = self.p_nominal[k].copy()
         Pi = self.eskf.P.copy()
         Vi = int(self.V_coop)
@@ -127,7 +127,7 @@ class Robot:
         Pj = np.asarray(reflector_packet["P"], dtype=float).reshape(6, 6)
         Vj = int(reflector_packet["V"])
 
-        di, Pi_new, dj, Pj_new, V_new, omega_used = ESKFSingleRobot.coop_robot_range_mutualistic(
+        di, Pi_new, dj, Pj_new, V_new = ESKFSingleRobot.coop_robot_range(
             Pi=Pi,
             Pj=Pj,
             p_i=p_i,
@@ -136,6 +136,7 @@ class Robot:
             R=R,
             Vi=Vi,
             Vj=Vj,
+            type = coop_type,
         )
 
         self.eskf.deltax = di
@@ -143,12 +144,17 @@ class Robot:
         self.apply_filter_correction(k)
         self.V_coop = int(V_new)
 
+        # if coop_type == "commensalistic":
+        #     dj = np.zeros_like(dj)
+        #     Pj_new = Pj.copy()
+        #     V_new = int(Vj)
+        
         msg_to_reflector = {
             "delta": dj,
             "P_new": Pj_new,
-            "V_new": int(V_new),
-            "omega_used": omega_used,
+            "V_new": int(V_new)
         }
+
         return msg_to_reflector
 
 

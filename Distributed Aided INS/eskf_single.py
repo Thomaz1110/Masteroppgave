@@ -16,7 +16,7 @@ class ESKFSingleRobot:
         decay = 0.0 if np.isinf(self.T_acc) else -1.0 / self.T_acc
 
         q_acc = sigma_acc ** 2
-        q_b = sigma_bias ** 2
+        q_b = (sigma_bias ** 2) / self.dt                           # explained down below
 
         self.Ac = np.zeros((self.state_dim, self.state_dim))
         self.Ec = np.zeros((self.state_dim, self.noise_dim))
@@ -33,10 +33,15 @@ class ESKFSingleRobot:
         self.Ec[4, 2] = 1.0
         self.Ec[5, 3] = 1.0
 
-        self.Ad = np.eye(self.state_dim) + self.Ac * self.dt
-        self.Ed = self.Ec.copy() * self.dt
+        self.Qc = np.diag([q_acc, q_acc, q_b, q_b])
 
-        self.Qd = np.diag([q_acc, q_acc, q_b, q_b])
+        self.Ad = np.eye(self.state_dim) + self.Ac * self.dt
+        self.Ed = self.Ec * self.dt
+        self.Qd = self.Ed @ self.Qc @ self.Ed.T
+
+        # We model accel bias as b[k+1] = b[k] + sigma_bias*sqrt(dt)*n, so Var(Δb) = sigma_bias^2 * dt.
+        # Discretization uses Ed = Ec*dt and Qd = Ed @ Qc @ Ed.T, which would give Var(Δb) = dt^2 * q_b.
+        # Therefore we set q_b = sigma_bias^2 / dt so that dt^2*q_b = sigma_bias^2*dt (correct per-step bias RW variance).
 
         self.deltax = np.zeros((self.state_dim, 1))
         self.P = np.eye(self.state_dim) * 1e-3
@@ -44,7 +49,7 @@ class ESKFSingleRobot:
     def predict(self, acc_meas_2d=None, dt=None):
         # Keep signature flexible; current linear model uses fixed dt from init.
         self.deltax = self.Ad @ self.deltax
-        self.P = self.Ad @ self.P @ self.Ad.T + self.Ed @ self.Qd @ self.Ed.T
+        self.P = self.Ad @ self.P @ self.Ad.T + self.Qd
 
     def update(self, H, delta_y, R):
         r = delta_y - H @ self.deltax
@@ -96,11 +101,11 @@ class ESKFSingleRobot:
         self.deltax = np.zeros_like(self.deltax)
 
     @staticmethod
-    def coop_robot_range_mutualistic(
-        Pi, Pj, p_i, p_j, y_meas, R, Vi, Vj, omega_grid=None
+    def coop_robot_range(
+        Pi, Pj, p_i, p_j, y_meas, R, Vi, Vj, type, omega_grid=None
     ):
         """
-        Mutualistic cooperative range update for two robots (i initiator, j reflector).
+        Mutualistic or commensalistic cooperative range update for two robots (i initiator, j reflector).
 
         Returns
         -------
@@ -113,6 +118,13 @@ class ESKFSingleRobot:
         omega_used : float | None
             Used covariance-intersection weight when correlated, otherwise None.
         """
+        if type == "mutualistic":
+            c_i, c_j = 1.0, 1.0
+        elif type == "commensalistic":
+            c_i, c_j = 1.0, 0.0
+        else:
+            raise ValueError("type must be 'mutualistic' or 'commensalistic'")
+        
         Pi = np.asarray(Pi, dtype=float).reshape(6, 6)
         Pj = np.asarray(Pj, dtype=float).reshape(6, 6)
         p_i = np.asarray(p_i, dtype=float).reshape(2)
@@ -142,23 +154,23 @@ class ESKFSingleRobot:
 
         def joint_update(omega=None):
             Pbar = np.zeros((12, 12))
-            if omega is None:
-                Pbar[:6, :6] = Pi
+            if omega is None:                           # No covariance intersection, use full covariances
+                Pbar[:6, :6] = Pi                       
                 Pbar[6:, 6:] = Pj
-            else:
+            else:                                       # Covariance intersection with weight omega for initiator, (1-omega) for reflector
                 Pbar[:6, :6] = Pi / omega
                 Pbar[6:, 6:] = Pj / (1.0 - omega)
 
-            H = np.zeros((1, 12))
+            H = np.zeros((1, 12))                       
             H[0, :6] = Hi
             H[0, 6:] = Hj
 
-            S = H @ Pbar @ H.T + R
-            K = Pbar @ H.T @ np.linalg.inv(S)
-            delta = K @ delta_y
+            S = H @ Pbar @ H.T + R                      # Innovation covariance
+            K = Pbar @ H.T @ np.linalg.inv(S)           # Kalman gain
+            delta = K @ delta_y                         # State correction for combined state [delta_i; delta_j], with shape (12,1)
 
             I = np.eye(12)
-            Pplus = (I - K @ H) @ Pbar @ (I - K @ H).T + K @ R @ K.T
+            Pplus = (I - K @ H) @ Pbar @ (I - K @ H).T + K @ R @ K.T  # Updated covariance for combined state  
 
             di = delta[:6].reshape(6, 1)
             dj = delta[6:].reshape(6, 1)
@@ -167,16 +179,17 @@ class ESKFSingleRobot:
             return di, dj, Pi_new, Pj_new
 
         omega_used = None
-        if not correlated:
+        if not correlated:                                      # If not previously cooperated, no covariance intersection needed
             di, dj, Pi_new, Pj_new = joint_update(omega=None)
-        else:
-            best_w = None
+        
+        else:                                                   # If previously cooperated, perform covariance intersection over specified omega grid to find optimal balance between initiator and reflector covariance reductions
+            best_w = None                                       
             best_J = np.inf
             for w in omega_grid:
                 w = float(w)
                 try:
                     _, _, Pi_tmp, Pj_tmp = joint_update(omega=w)
-                    J = logdet_spd(Pi_tmp) + logdet_spd(Pj_tmp)
+                    J = c_i*logdet_spd(Pi_tmp) + c_j*logdet_spd(Pj_tmp)
                 except np.linalg.LinAlgError:
                     continue
                 if J < best_J:
@@ -186,8 +199,8 @@ class ESKFSingleRobot:
             if best_w is None:
                 best_w = 0.5
 
-            omega_used = best_w
+            #print(best_w)
             di, dj, Pi_new, Pj_new = joint_update(omega=best_w)
 
         V_new = int(Vi) | int(Vj)
-        return di, Pi_new, dj, Pj_new, V_new, omega_used
+        return di, Pi_new, dj, Pj_new, V_new

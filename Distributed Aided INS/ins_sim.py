@@ -20,8 +20,8 @@ from config import (
 )
 
 
-num_robots = 2
-duration_s = 300.0
+num_robots = 1
+duration_s = 500.0
 standstill_time = 20.0              # [s] initial standstill period for calibration
 use_true_initial_position = True     # True => all robots start at true positions
 
@@ -30,15 +30,15 @@ vel_threshold = 0.5                 # [m/s] velocity threshold for dominant-axis
 dominant_axis_method = "true"       # "true" (use ground-truth velocity) or "nominal" (use estimated velocity + threshold)
 velocity_update_rate_hz = 10.0      # [Hz] dominant-axis zero-velocity update rate
 
-beacon_range_rate_hz = 5.0          # [Hz] robot-to-beacon range rate
-robot_range_rate_hz = 1.0           # [Hz] robot-to-robot range rate
-range_measurement_stop_time = None  # seconds; None => entire run
-
 
 use_virtual_measurements = True      # If True, use virtual measurements: dominant-axis velocity updates and initial standstill velocity updates
-beacon_ranging = False                # robot-to-beacon ranging
-robot_ranging = True                # robot-to-robot ranging
+beacon_ranging = False               # robot-to-beacon ranging
+robot_ranging = False                # robot-to-robot ranging
+coop_type = "mutualistic"        # "mutualistic" or "commensalistic" cooperative range updates for robot-to-robot ranging
 
+beacon_range_rate_hz = 5.0          # [Hz] robot-to-beacon range rate
+robot_range_rate_hz = 1.0          # [Hz] robot-to-robot range rate
+range_measurement_stop_time = None  # seconds; None => entire run
 
 plot_acc = 0
 plot_vel = 0
@@ -125,6 +125,8 @@ beacons_all = np.array([
 ])
 
 
+flag = True  # For alternating initiator/reflector roles in robot-to-robot ranging
+
 for k in range(1, N):
     for robot in robots:
         robot.propagate_nominal(k)
@@ -196,10 +198,18 @@ for k in range(1, N):
             robot.apply_filter_correction(k)
         current_beacon_index = (current_beacon_index + 1) % len(beacons_all)
 
+    
     if robot_range_due and num_robots == 2:
-        initiator_robot = robots[0]
-        reflector_robot = robots[1]
 
+        if flag:
+            initiator_robot = robots[0]
+            reflector_robot = robots[1]
+            flag = False
+        else:
+            initiator_robot = robots[1]
+            reflector_robot = robots[0]
+            flag = True
+        
         reflector_packet = reflector_robot.get_coop_packet(k)
 
         initiator_true = np.array([initiator_robot.pos_true[k, 0], initiator_robot.pos_true[k, 1], 0.0])
@@ -209,9 +219,11 @@ for k in range(1, N):
         y_meas = max(y_meas, 0.0)
 
         msg_to_reflector = initiator_robot.do_robot_range_as_initiator(
-            k, y_meas, sigma_range**2, reflector_packet
+            k, y_meas, sigma_range**2, reflector_packet, coop_type
         )
         reflector_robot.apply_coop_update_from_initiator(k, msg_to_reflector)
+
+       
 
 
  
