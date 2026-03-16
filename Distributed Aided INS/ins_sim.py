@@ -20,7 +20,7 @@ from config import (
 )
 
 
-num_robots = 1
+num_robots = 2
 duration_s = 500.0
 standstill_time = 20.0              # [s] initial standstill period for calibration
 use_true_initial_position = True     # True => all robots start at true positions
@@ -33,10 +33,10 @@ velocity_update_rate_hz = 10.0      # [Hz] dominant-axis zero-velocity update ra
 
 use_virtual_measurements = True      # If True, use virtual measurements: dominant-axis velocity updates and initial standstill velocity updates
 beacon_ranging = False               # robot-to-beacon ranging
-robot_ranging = False                # robot-to-robot ranging
+robot_ranging = True                # robot-to-robot ranging
 coop_type = "mutualistic"        # "mutualistic" or "commensalistic" cooperative range updates for robot-to-robot ranging
 
-beacon_range_rate_hz = 5.0          # [Hz] robot-to-beacon range rate
+beacon_range_rate_hz = 1.0          # [Hz] robot-to-beacon range rate
 robot_range_rate_hz = 1.0          # [Hz] robot-to-robot range rate
 range_measurement_stop_time = None  # seconds; None => entire run
 
@@ -44,6 +44,8 @@ plot_acc = 0
 plot_vel = 0
 plot_pos = 1
 plot_bias = 1
+plot_pos_live = False
+plot_pos_live_every_n_steps = 20
 
 
 
@@ -126,6 +128,17 @@ beacons_all = np.array([
 
 
 flag = True  # For alternating initiator/reflector roles in robot-to-robot ranging
+
+if plot_pos_live:
+    for idx, robot in enumerate(robots):
+        ins_plot.init_live_position_plot(
+            robot.pos_true,
+            robot.p_nominal,
+            beacons=beacons_all if beacon_ranging else None,
+            robot_id=idx,
+            grid_x_limits=(0.0, 35.0),
+            grid_y_limits=(0.0, 21.0),
+        )
 
 for k in range(1, N):
     for robot in robots:
@@ -223,7 +236,9 @@ for k in range(1, N):
         )
         reflector_robot.apply_coop_update_from_initiator(k, msg_to_reflector)
 
-       
+    if plot_pos_live and (k % plot_pos_live_every_n_steps == 0 or k == N - 1):
+        for robot in robots:
+            ins_plot.update_live_position_plot(k, robot.pos_true, robot.p_nominal)
 
 
  

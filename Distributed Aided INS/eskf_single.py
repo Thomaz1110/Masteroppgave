@@ -146,7 +146,7 @@ class ESKFSingleRobot:
         Hi[0, 0:2] = u
         Hj[0, 0:2] = -u
 
-        correlated = (int(Vi) & int(Vj)) != 0
+        correlated = False #(int(Vi) & int(Vj)) != 0
 
         def logdet_spd(P):
             L = np.linalg.cholesky(P)

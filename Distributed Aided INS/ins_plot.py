@@ -20,6 +20,12 @@ _pos_comp_total = None
 _bias_fig = None
 _bias_axes = None
 _bias_total = None
+_live_pos_fig = None
+_live_pos_ax = None
+_live_true_line = None
+_live_est_line = None
+_live_true_marker = None
+_live_est_marker = None
 
 
 def _apply_ddg_ticks_and_grid(ax, pos_true, grid_x_limits=None, grid_y_limits=None):
@@ -124,6 +130,72 @@ def _ensure_shared_bias_axes(total_robots):
         _bias_axes = axes_per_robot
         _bias_total = total_robots
     return _bias_fig, _bias_axes
+
+
+def init_live_position_plot(
+    pos_true,
+    pos_est,
+    beacons=None,
+    robot_id=None,
+    grid_x_limits=(0.0, 35.0),
+    grid_y_limits=(0.0, 21.0),
+):
+    global _live_pos_fig, _live_pos_ax
+    global _live_true_line, _live_est_line
+    global _live_true_marker, _live_est_marker
+
+    plt.ion()
+    _live_pos_fig, _live_pos_ax = plt.subplots(figsize=(12, 7))
+    _live_true_line, = _live_pos_ax.plot([], [], label="True trajectory", color="tab:blue")
+    _live_est_line, = _live_pos_ax.plot([], [], label="Estimated trajectory", color="tab:orange", alpha=0.85)
+    _live_true_marker, = _live_pos_ax.plot([], [], marker="o", color="tab:blue", linestyle="None")
+    _live_est_marker, = _live_pos_ax.plot([], [], marker="o", color="tab:orange", linestyle="None")
+
+    if beacons is not None and len(beacons) > 0:
+        beacons_xy = beacons[:, :2]
+        _live_pos_ax.scatter(
+            beacons_xy[:, 0],
+            beacons_xy[:, 1],
+            marker="o",
+            color="tab:green",
+            label="Known beacons",
+            s=80,
+        )
+
+    title = "Live True vs Estimated Trajectory"
+    if robot_id is not None:
+        title += f" (Robot {robot_id})"
+    _live_pos_ax.set_title(title, fontsize=TITLE_FONTSIZE)
+    _live_pos_ax.set_xlabel("X [m]", fontsize=LABEL_FONTSIZE)
+    _live_pos_ax.set_ylabel("Y [m]", fontsize=LABEL_FONTSIZE)
+    _live_pos_ax.set_aspect("equal", adjustable="box")
+    _live_pos_ax.legend()
+    _style_ax(_live_pos_ax)
+
+    _apply_ddg_ticks_and_grid(
+        _live_pos_ax,
+        pos_true,
+        grid_x_limits=grid_x_limits,
+        grid_y_limits=grid_y_limits,
+    )
+
+    update_live_position_plot(0, pos_true, pos_est)
+
+
+def update_live_position_plot(k, pos_true, pos_est, pause_s=0.001):
+    if _live_pos_ax is None:
+        return
+
+    true_xy = pos_true[: k + 1]
+    est_xy = pos_est[: k + 1]
+
+    _live_true_line.set_data(true_xy[:, 0], true_xy[:, 1])
+    _live_est_line.set_data(est_xy[:, 0], est_xy[:, 1])
+    _live_true_marker.set_data([true_xy[-1, 0]], [true_xy[-1, 1]])
+    _live_est_marker.set_data([est_xy[-1, 0]], [est_xy[-1, 1]])
+
+    _live_pos_ax.figure.canvas.draw_idle()
+    plt.pause(pause_s)
 
 
 def plot_true_trajectory(pos_true, trajectory_pattern, title="True Trajectory"):
