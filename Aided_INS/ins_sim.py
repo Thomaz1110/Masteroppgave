@@ -14,14 +14,14 @@ sigma_range = 0.5                   # range measurement noise std [m]
 vel_threshold = 0.5                 # dominance threshold for dominant-axis detection
 dominant_axis_method = "true"       # "true" (use ground-truth velocity) or "nominal" (use estimated velocity + threshold)
 velocity_update_rate_hz = 10.0      # [Hz] dominant-axis zero-velocity update rate
-beacon_range_rate_hz = 5.0           # [Hz] robot0-to-beacon range rate
-robot_range_rate_hz = 5.0           # [Hz] robot-to-robot range rate per pair group
+beacon_range_rate_hz = 1.0           # [Hz] robot0-to-beacon range rate
+robot_range_rate_hz = 1.0           # [Hz] robot-to-robot range rate per pair group
 range_measurement_stop_time = None  # seconds; None => entire run
 standstill_time = 20.0              # [s] initial standstill period for calibration
 
-use_virtual_measurments = True      # If True, use virtual measurements: dominant-axis velocity updates and initial standstill velocity updates
-beacon_ranging = True              # robot0-to-beacon ranging
-robot_ranging = False               # robot-to-robot ranging
+use_virtual_measurements = True      # If True, use virtual measurements: dominant-axis velocity updates and initial standstill velocity updates
+beacon_ranging = False              # robot0-to-beacon ranging
+robot_ranging = True               # robot-to-robot ranging
 
 use_true_initial_position = True        # True => all robots start at true positions
 robot0_knows_initial_position = True    # If True, robot 0 starts at true position even when others don't
@@ -29,8 +29,8 @@ initial_pos_radius = 5.0                # [m] radius for random initial offset
 initial_pos_var_robot = 5**2            # covariance for uncertain initial positions
 initial_bias_var = 0.1                  # covariance for initial accelerometer bias
 
-num_robots = 1
-duration_s = 300.0
+num_robots = 2
+duration_s = 500.0
 trajectory_seed_base = 5001
 imu_seed_base = 1002
 range_seed = 3000
@@ -116,7 +116,9 @@ if robot_ranging and robot_range_rate_hz > 0.0:
 else:
     robot_range_interval_steps = None
 
-range_rng = np.random.default_rng(range_seed)
+range_rngs = [
+    np.random.default_rng(range_seed + idx) for idx in range(num_robots)
+]
 current_beacon_index = 0
 
 # Generate robot pair groups for robot-to-robot ranging, returning list of list of (initiator_idx, reflector_idx) tuples
@@ -141,7 +143,7 @@ for k in range(1, N):
 
     kf.predict()
 
-    if use_virtual_measurments:
+    if use_virtual_measurements:
         # Velocity updates based on dominant axis
         if (
             velocity_update_interval_steps is not None
@@ -199,7 +201,7 @@ for k in range(1, N):
         reflector_nominal = beacon
         diff_true = initiator_true - reflector_true
         diff_nominal = initiator_nominal - reflector_nominal
-        y_meas = np.linalg.norm(diff_true) + range_rng.normal(scale=sigma_range)
+        y_meas = np.linalg.norm(diff_true) + range_rngs[0].normal(scale=sigma_range)
         y_meas = max(y_meas, 0.0)
         y_ins_hat = np.linalg.norm(diff_nominal)
         kf.update(
@@ -233,7 +235,7 @@ for k in range(1, N):
             reflector_nominal = np.array([reflector_robot.p_nominal[k, 0], reflector_robot.p_nominal[k, 1], 0.0])
             diff_true = initiator_true - reflector_true
             diff_nominal = initiator_nominal - reflector_nominal
-            y_meas = np.linalg.norm(diff_true) + range_rng.normal(scale=sigma_range)
+            y_meas = np.linalg.norm(diff_true) + range_rngs[initiator_idx].normal(scale=sigma_range)
             y_meas = max(y_meas, 0.0)
             y_ins_hat = np.linalg.norm(diff_nominal)
             kf.update(

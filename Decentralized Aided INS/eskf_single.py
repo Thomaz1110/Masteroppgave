@@ -102,7 +102,7 @@ class ESKFSingleRobot:
 
     @staticmethod
     def coop_robot_range(
-        Pi, Pj, p_i, p_j, y_meas, R, Vi, Vj, type, omega_grid=None
+        Pi, Pj, p_i, p_j, y_meas, R, Vi, Vj, type, omega_grid=None, force_uncorrelated=False
     ):
         """
         Mutualistic or commensalistic cooperative range update for two robots (i initiator, j reflector).
@@ -146,7 +146,7 @@ class ESKFSingleRobot:
         Hi[0, 0:2] = u
         Hj[0, 0:2] = -u
 
-        correlated = False #(int(Vi) & int(Vj)) != 0
+        correlated = False if force_uncorrelated else (int(Vi) & int(Vj)) != 0
 
         def logdet_spd(P):
             L = np.linalg.cholesky(P)

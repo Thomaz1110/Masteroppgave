@@ -22,23 +22,24 @@ from config import (
 
 num_robots = 2
 duration_s = 500.0
-standstill_time = 20.0              # [s] initial standstill period for calibration
-use_true_initial_position = True     # True => all robots start at true positions
+standstill_time = 20.0                  # [s] initial standstill period for calibration
+use_true_initial_position = True        # True => all robots start at true positions
 
 
-vel_threshold = 0.5                 # [m/s] velocity threshold for dominant-axis detection
-dominant_axis_method = "true"       # "true" (use ground-truth velocity) or "nominal" (use estimated velocity + threshold)
-velocity_update_rate_hz = 10.0      # [Hz] dominant-axis zero-velocity update rate
+vel_threshold = 0.5                     # [m/s] velocity threshold for dominant-axis detection
+dominant_axis_method = "true"           # "true" (use ground-truth velocity) or "nominal" (use estimated velocity + threshold)
+velocity_update_rate_hz = 10.0          # [Hz] dominant-axis zero-velocity update rate
 
 
-use_virtual_measurements = True      # If True, use virtual measurements: dominant-axis velocity updates and initial standstill velocity updates
-beacon_ranging = False               # robot-to-beacon ranging
-robot_ranging = True                # robot-to-robot ranging
-coop_type = "mutualistic"        # "mutualistic" or "commensalistic" cooperative range updates for robot-to-robot ranging
+use_virtual_measurements = True         # If True, use virtual measurements: dominant-axis velocity updates and initial standstill velocity updates
+beacon_ranging = False                  # robot-to-beacon ranging
+robot_ranging = True                    # robot-to-robot ranging
+coop_type = "mutualistic"               # "mutualistic" or "commensalistic" cooperative range updates for robot-to-robot ranging
+force_uncorrelated_robot_range = True   # If True, ignore cooperative-history correlation and treat robot pairs as uncorrelated
 
-beacon_range_rate_hz = 1.0          # [Hz] robot-to-beacon range rate
-robot_range_rate_hz = 1.0          # [Hz] robot-to-robot range rate
-range_measurement_stop_time = None  # seconds; None => entire run
+beacon_range_rate_hz = 1.0              # [Hz] robot-to-beacon range rate
+robot_range_rate_hz = 1.0               # [Hz] robot-to-robot range rate
+range_measurement_stop_time = None      # seconds; None => entire run
 
 plot_acc = 0
 plot_vel = 0
@@ -127,7 +128,7 @@ beacons_all = np.array([
 ])
 
 
-flag = True  # For alternating initiator/reflector roles in robot-to-robot ranging
+robot0_is_next_initiator = True  # Alternate which robot acts as initiator for robot-to-robot ranging
 
 if plot_pos_live:
     for idx, robot in enumerate(robots):
@@ -214,14 +215,14 @@ for k in range(1, N):
     
     if robot_range_due and num_robots == 2:
 
-        if flag:
+        if robot0_is_next_initiator:
             initiator_robot = robots[0]
             reflector_robot = robots[1]
-            flag = False
+            robot0_is_next_initiator = False
         else:
             initiator_robot = robots[1]
             reflector_robot = robots[0]
-            flag = True
+            robot0_is_next_initiator = True
         
         reflector_packet = reflector_robot.get_coop_packet(k)
 
@@ -232,7 +233,7 @@ for k in range(1, N):
         y_meas = max(y_meas, 0.0)
 
         msg_to_reflector = initiator_robot.do_robot_range_as_initiator(
-            k, y_meas, sigma_range**2, reflector_packet, coop_type
+            k, y_meas, sigma_range**2, reflector_packet, coop_type, force_uncorrelated_robot_range
         )
         reflector_robot.apply_coop_update_from_initiator(k, msg_to_reflector)
 

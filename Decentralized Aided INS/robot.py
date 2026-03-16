@@ -118,7 +118,7 @@ class Robot:
         self.apply_filter_correction(k)
         self.V_coop = int(msg["V_new"])
 
-    def do_robot_range_as_initiator(self, k, y_meas, R, reflector_packet, coop_type):
+    def do_robot_range_as_initiator(self, k, y_meas, R, reflector_packet, coop_type, force_uncorrelated=False):
         p_i = self.p_nominal[k].copy()
         Pi = self.eskf.P.copy()
         Vi = int(self.V_coop)
@@ -137,6 +137,7 @@ class Robot:
             Vi=Vi,
             Vj=Vj,
             type = coop_type,
+            force_uncorrelated=force_uncorrelated,
         )
 
         self.eskf.deltax = di
@@ -144,10 +145,10 @@ class Robot:
         self.apply_filter_correction(k)
         self.V_coop = int(V_new)
 
-        # if coop_type == "commensalistic":
-        #     dj = np.zeros_like(dj)
-        #     Pj_new = Pj.copy()
-        #     V_new = int(Vj)
+        if coop_type == "commensalistic":
+            dj = np.zeros_like(dj)
+            Pj_new = Pj.copy()
+            V_new = int(Vj)
         
         msg_to_reflector = {
             "delta": dj,

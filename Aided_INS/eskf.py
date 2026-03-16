@@ -124,7 +124,7 @@ class ESKFMultiRobot:
         r = delta_y - C @ self.deltax
         S = C @ self.P @ C.T + R
         K = self.P @ C.T @ np.linalg.inv(S)
-        self.deltax = K @ r
+        self.deltax = self.deltax + K @ r
         I = np.eye(self.state_dim)
         self.P = (I - K @ C) @ self.P @ (I - K @ C).T + K @ R @ K.T
 
