@@ -12,7 +12,7 @@ class ESKFSingleRobot:
         self.state_dim = 6
         self.noise_dim = 4
 
-        self.T_acc = np.inf
+        self.T_acc = 300 #np.inf
         decay = 0.0 if np.isinf(self.T_acc) else -1.0 / self.T_acc
 
         q_acc = sigma_acc ** 2
@@ -55,7 +55,7 @@ class ESKFSingleRobot:
         r = delta_y - H @ self.deltax
         S = H @ self.P @ H.T + R
         K = self.P @ H.T @ np.linalg.inv(S)
-        self.deltax = K @ r
+        self.deltax = self.deltax +K @ r
         I = np.eye(self.state_dim)
         self.P = (I - K @ H) @ self.P @ (I - K @ H).T + K @ R @ K.T
 
@@ -203,4 +203,5 @@ class ESKFSingleRobot:
             di, dj, Pi_new, Pj_new = joint_update(omega=best_w)
 
         V_new = int(Vi) | int(Vj)
+    
         return di, Pi_new, dj, Pj_new, V_new
