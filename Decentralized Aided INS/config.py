@@ -1,8 +1,8 @@
 dt = 0.01                           # sample period [s]
 
 # Noise parameters
-sigma_acc = 0.05                    # accelerometer noise std [m/s^2]
-sigma_bias = 0.003                  # accelerometer bias driving noise std [m/s^2/sqrt(s)]
+sigma_acc = 9.6e-3                  # accelerometer white-noise standard deviation (per sample) [m/s^2]
+sigma_bias = 9.6e-4                 # accelerometer bias standard deviation (stationary bias level) [m/s^2]
 sigma_vel = 10e-3                   # velocity measurement noise std [m/s]
 sigma_range = 0.5                   # range measurement noise std [m]
 

@@ -144,7 +144,7 @@ if plot_pos_live:
 for k in range(1, N):
     for robot in robots:
         robot.propagate_nominal(k)
-        robot.eskf.predict(acc_meas_2d=robot.f_imu[k - 1], dt=dt)
+        robot.eskf.predict()
 
     if use_virtual_measurements:
         for robot in robots:

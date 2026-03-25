@@ -1,5 +1,5 @@
 import numpy as np
-
+from scipy.linalg import expm
 
 class ESKFSingleRobot:
     """
@@ -15,8 +15,9 @@ class ESKFSingleRobot:
         self.T_acc = 300 #np.inf
         decay = 0.0 if np.isinf(self.T_acc) else -1.0 / self.T_acc
 
-        q_acc = sigma_acc ** 2
-        q_b = (sigma_bias ** 2) / self.dt                           # explained down below
+        q_acc = sigma_acc**2 * dt                                   # Accelerometer measurement noise intensity. sigma_acc is per sample, so we use sigma_acc^2*dt for the continuous-time noise intensity to get the correct discrete-time noise variance after discretization.
+                                                                    # Remove dt if using datasheet noise density.
+        q_b = 2.0 * (sigma_bias ** 2) / self.T_acc                  # Bias driving noise intensity; chosen so that the resulting bias process has stationary variance sigma_bias^2. 
 
         self.Ac = np.zeros((self.state_dim, self.state_dim))
         self.Ec = np.zeros((self.state_dim, self.noise_dim))
@@ -35,18 +36,32 @@ class ESKFSingleRobot:
 
         self.Qc = np.diag([q_acc, q_acc, q_b, q_b])
 
-        self.Ad = np.eye(self.state_dim) + self.Ac * self.dt
-        self.Ed = self.Ec * self.dt
-        self.Qd = self.Ed @ self.Qc @ self.Ed.T
+        # self.Ad = np.eye(self.state_dim) + self.Ac * self.dt
+        # self.Ed = self.Ec * self.dt
+        # self.Qd = self.Ed @ self.Qc @ self.Ed.T * self.dt
 
-        # We model accel bias as b[k+1] = b[k] + sigma_bias*sqrt(dt)*n, so Var(Δb) = sigma_bias^2 * dt.
-        # Discretization uses Ed = Ec*dt and Qd = Ed @ Qc @ Ed.T, which would give Var(Δb) = dt^2 * q_b.
-        # Therefore we set q_b = sigma_bias^2 / dt so that dt^2*q_b = sigma_bias^2*dt (correct per-step bias RW variance).
+
+        n = self.state_dim
+
+        G = self.Ec @ self.Qc @ self.Ec.T
+
+        A_vl = np.block([
+            [-self.Ac, G],
+            [np.zeros((n, n)), self.Ac.T]
+        ])
+
+        M = expm(A_vl * self.dt)
+
+        M12 = M[:n, n:]
+        M22 = M[n:, n:]
+
+        self.Ad = M22.T
+        self.Qd = self.Ad @ M12
 
         self.deltax = np.zeros((self.state_dim, 1))
         self.P = np.eye(self.state_dim) * 1e-3
 
-    def predict(self, acc_meas_2d=None, dt=None):
+    def predict(self):
         # Keep signature flexible; current linear model uses fixed dt from init.
         self.deltax = self.Ad @ self.deltax
         self.P = self.Ad @ self.P @ self.Ad.T + self.Qd
