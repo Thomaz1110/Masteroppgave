@@ -1,4 +1,5 @@
 import numpy as np
+from scipy.linalg import expm
 
 
 class ESKFMultiRobot:
@@ -28,12 +29,11 @@ class ESKFMultiRobot:
         self.state_dim = 6 * num_robots
         self.noise_dim = 4 * num_robots
         
-        self.T_acc = np.inf  # accelerometer bias time constant
+        self.T_acc = 300
         decay = 0.0 if np.isinf(self.T_acc) else -1.0 / self.T_acc
 
-
-        q_acc = sigma_acc ** 2
-        q_b = (sigma_bias ** 2) / self.dt
+        q_acc = sigma_acc**2 * dt
+        q_b = 2.0 * (sigma_bias ** 2) / self.T_acc
 
         self.Ac = np.zeros((self.state_dim, self.state_dim))
         self.Ec = np.zeros((self.state_dim, self.noise_dim))
@@ -56,14 +56,22 @@ class ESKFMultiRobot:
             self.Ec[state_offset + 4, noise_offset + 2] = 1.0
             self.Ec[state_offset + 5, noise_offset + 3] = 1.0
 
-        # Discrete-time system matrix and process noise matrix
-        self.Ad = np.eye(self.state_dim) + self.Ac * self.dt
-        self.Ed = self.Ec.copy() * self.dt
-
-        # Discrete-time process noise covariance
         Qc_block = np.diag([q_acc, q_acc, q_b, q_b])
         self.Qc = np.kron(np.eye(num_robots), Qc_block)
-        self.Qd = self.Ed @ self.Qc @ self.Ed.T
+
+        n = self.state_dim
+        G = self.Ec @ self.Qc @ self.Ec.T
+        A_vl = np.block([
+            [-self.Ac, G],
+            [np.zeros((n, n)), self.Ac.T]
+        ])
+
+        M = expm(A_vl * self.dt)
+        M12 = M[:n, n:]
+        M22 = M[n:, n:]
+
+        self.Ad = M22.T
+        self.Qd = self.Ad @ M12
 
         self.deltax = np.zeros((self.state_dim, 1))
         self.P = np.eye(self.state_dim) * 1e-3
