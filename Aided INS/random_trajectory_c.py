@@ -1,6 +1,6 @@
 import numpy as np
 
-from trajectory import trapezoid_segment
+from trajectory_c import trapezoid_segment
 
 DEFAULT_DT = 0.01
 DEFAULT_DURATION_S = 300.0
@@ -147,7 +147,7 @@ if __name__ == "__main__":
     import matplotlib.pyplot as plt
     from matplotlib.animation import FuncAnimation
 
-    import ins_plot
+    import ins_plot_c as ins_plot
 
     t, pos, vel, acc = random_trajectory_generator()
     ins_plot.plot_trajectory_with_grid(pos, title="Random Trajectory")

@@ -1,9 +1,9 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-from robot import Robot, generate_robot_pair_groups, initialize_robot_positions
-from eskf import ESKFMultiRobot
-import ins_plot
+from robot_c import Robot, generate_robot_pair_groups, initialize_robot_positions
+from eskf_c import ESKFMultiRobot
+import plotting_c as ins_plot
 
 
 dt = 0.01                           # sample period [s]

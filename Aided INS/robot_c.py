@@ -1,6 +1,6 @@
 import numpy as np
-import random_trajectory
-import imu_acc
+import random_trajectory_c as random_trajectory
+import imu_acc_c as imu_acc
 
 
 class Robot:
