@@ -4,13 +4,24 @@ import matplotlib.pyplot as plt
 from robot_c import Robot, generate_robot_pair_groups, initialize_robot_positions
 from eskf_c import ESKFMultiRobot
 import plotting_c as ins_plot
+from config_c import (
+    dt,
+    sigma_acc,
+    sigma_bias,
+    sigma_vel,
+    sigma_range,
+    initial_pos_radius,
+    initial_pos_var_robot,
+    initial_bias_var,
+    trajectory_seed_base,
+    imu_seed_base,
+    initial_bias_seed_base,
+    range_seed,
+    grid_x_limits,
+    grid_y_limits,
+)
 
 
-dt = 0.01                           # sample period [s]
-sigma_acc = 9.6e-3                  # accelerometer white-noise standard deviation (per sample) [m/s^2]
-sigma_bias = 9.6e-4                 # accelerometer bias standard deviation (stationary bias level) [m/s^2]
-sigma_vel = 10e-3                   # velocity measurement noise std [m/s]
-sigma_range = 0.5                   # range measurement noise std [m]
 vel_threshold = 0.5                 # dominance threshold for dominant-axis detection
 dominant_axis_method = "true"       # "true" (use ground-truth velocity) or "nominal" (use estimated velocity + threshold)
 velocity_update_rate_hz = 10.0      # [Hz] dominant-axis zero-velocity update rate
@@ -25,15 +36,9 @@ robot_ranging = True               # robot-to-robot ranging
 
 use_true_initial_position = True        # True => all robots start at true positions
 robot0_knows_initial_position = True    # If True, robot 0 starts at true position even when others don't
-initial_pos_radius = 5.0                # [m] radius for random initial offset
-initial_pos_var_robot = 5**2            # covariance for uncertain initial positions
-initial_bias_var = 0.1                  # covariance for initial accelerometer bias
 
 num_robots = 2
 duration_s = 500.0
-trajectory_seed_base = 5001
-imu_seed_base = 1002
-range_seed = 3000
 
 plot_acc = 0
 plot_vel = 0
@@ -56,6 +61,7 @@ for idx in range(num_robots):
         duration_s=duration_s,
         trajectory_seed=trajectory_seed_base + idx,
         imu_seed=imu_seed_base + idx,
+        initial_bias_seed=initial_bias_seed_base + idx,
     )
     robots.append(robot)
 
@@ -64,8 +70,8 @@ initialize_robot_positions(
     use_true_initial_position,
     robot0_knows_initial_position,
     initial_pos_radius,
-    grid_x_limits=(0.0, 35.0),
-    grid_y_limits=(0.0, 20.0),
+    grid_x_limits=grid_x_limits,
+    grid_y_limits=grid_y_limits,
 )
 
 

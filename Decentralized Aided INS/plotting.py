@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.ticker import FormatStrFormatter
 
 # ------------------ GLOBAL STYLE SETTINGS ------------------
 TITLE_FONTSIZE = 18
@@ -26,6 +27,19 @@ _live_true_line = None
 _live_est_line = None
 _live_true_marker = None
 _live_est_marker = None
+
+
+def _set_bias_axis_scale(ax, true_min, true_max, step=0.005):
+    true_span = true_max - true_min
+    margin = max(0.001, 0.1 * true_span)
+    lower = step * np.floor((true_min - margin) / step)
+    upper = step * np.ceil((true_max + margin) / step)
+    if np.isclose(lower, upper):
+        lower -= step
+        upper += step
+    ax.set_ylim(lower, upper)
+    ax.set_yticks(np.arange(lower, upper + 0.5 * step, step))
+    ax.yaxis.set_major_formatter(FormatStrFormatter("%.3f"))
 
 
 def _apply_ddg_ticks_and_grid(ax, pos_true, grid_x_limits=None, grid_y_limits=None):
@@ -111,7 +125,8 @@ def _ensure_shared_bias_axes(total_robots):
         cols = 2 if total_robots > 1 else 1
         rows = int(np.ceil(total_robots / cols))
         _bias_fig = plt.figure(figsize=(6 * cols, 4 * rows))
-        _bias_fig.suptitle("Bias estimates", fontsize=TITLE_FONTSIZE)
+        _bias_fig.suptitle("Bias estimates", fontsize=TITLE_FONTSIZE, y=0.98)
+        _bias_fig.subplots_adjust(left=0.08, right=0.98, bottom=0.12, top=0.86, wspace=0.18, hspace=0.18)
         subfigs = _bias_fig.subfigures(rows, cols, squeeze=False)
         axes_per_robot = []
         robot_idx = 0
@@ -121,6 +136,7 @@ def _ensure_shared_bias_axes(total_robots):
                     subfig = subfigs[r][c]
                     subfig.suptitle(f"Robot {robot_idx}", fontsize=TITLE_FONTSIZE-4)
                     ax_row = subfig.subplots(2, 1, sharex=True)
+                    subfig.subplots_adjust(left=0.16, bottom=0.20, right=0.98, top=0.88, hspace=0.24)
                     for a in ax_row:
                         _style_ax(a)
                     axes_per_robot.append(ax_row)
@@ -358,6 +374,7 @@ def plot_positions(
     unknown_beacon_true=None,
     robot_id=None,
     total_robots=None,
+    show_trajectory_plot=True,
 ):
     pos_error = np.linalg.norm(pos_true - pos_est, axis=1)
     dt = t[1] - t[0] if len(t) > 1 else 0.0
@@ -371,77 +388,79 @@ def plot_positions(
         mean_error = pos_error_for_mean.mean()
         pos_error_mean = np.full_like(pos_error, mean_error)
 
-    # Large 2D trajectory plot
-    fig_traj, ax_traj = plt.subplots(figsize=(12, 7))
-    ax_traj.plot(pos_true[:, 0], pos_true[:, 1], label="True trajectory")
-    ax_traj.plot(pos_est[:, 0], pos_est[:, 1], label="Estimated trajectory", alpha=0.7)
-    if len(pos_true) > 0:
-        ax_traj.scatter(pos_true[0, 0], pos_true[0, 1], marker="o", color="tab:red", s=80, label="Start")
-        num_arrows = ARROW_COUNT
-        if len(pos_true) > 1:
-            arrow_bases = np.linspace(0, len(pos_true) - 1, num_arrows + 2)[1:-1]
-            arrow_indices = np.clip(arrow_bases.astype(int), 0, len(pos_true) - 2)
-            used_indices = set()
-            for idx in arrow_indices:
-                if idx in used_indices:
-                    idx = min(idx + 1, len(pos_true) - 2)
-                start = pos_true[idx]
-                end = pos_true[idx + 1]
-                if np.allclose(start, end):
-                    continue
-                ax_traj.annotate(
-                    "",
-                    xy=(end[0], end[1]),
-                    xytext=(start[0], start[1]),
-                    arrowprops=dict(arrowstyle="->", color="tab:blue", lw=ARROW_LINEWIDTH, mutation_scale=15),
-                )
-                used_indices.add(idx)
+    if show_trajectory_plot:
+        fig_traj, ax_traj = plt.subplots(figsize=(12, 7))
+        ax_traj.plot(pos_true[:, 0], pos_true[:, 1], label="True trajectory")
+        ax_traj.plot(pos_est[:, 0], pos_est[:, 1], label="Estimated trajectory", alpha=0.7)
+        if len(pos_true) > 0:
+            ax_traj.scatter(pos_true[0, 0], pos_true[0, 1], marker="o", color="tab:red", s=80, label="Start")
+            num_arrows = ARROW_COUNT
+            if len(pos_true) > 1:
+                arrow_bases = np.linspace(0, len(pos_true) - 1, num_arrows + 2)[1:-1]
+                arrow_indices = np.clip(arrow_bases.astype(int), 0, len(pos_true) - 2)
+                used_indices = set()
+                for idx in arrow_indices:
+                    if idx in used_indices:
+                        idx = min(idx + 1, len(pos_true) - 2)
+                    start = pos_true[idx]
+                    end = pos_true[idx + 1]
+                    if np.allclose(start, end):
+                        continue
+                    ax_traj.annotate(
+                        "",
+                        xy=(end[0], end[1]),
+                        xytext=(start[0], start[1]),
+                        arrowprops=dict(arrowstyle="->", color="tab:blue", lw=ARROW_LINEWIDTH, mutation_scale=15),
+                    )
+                    used_indices.add(idx)
 
-    if beacons is not None and len(beacons) > 0:
-        beacons_xy = beacons[:, :2]
-        ax_traj.scatter(beacons_xy[:, 0], beacons_xy[:, 1], marker="o", color="tab:green", label="Known beacons", s=80)
-    if unknown_beacon_true is not None and (robot_id is None or robot_id == 0):
-        ax_traj.scatter(
-            unknown_beacon_true[0],
-            unknown_beacon_true[1],
-            marker="o",
-            color="tab:red",
-            label="Unknown beacon (true)",
+        if beacons is not None and len(beacons) > 0:
+            beacons_xy = beacons[:, :2]
+            ax_traj.scatter(beacons_xy[:, 0], beacons_xy[:, 1], marker="o", color="tab:green", label="Known beacons", s=80)
+        if unknown_beacon_true is not None and (robot_id is None or robot_id == 0):
+            ax_traj.scatter(
+                unknown_beacon_true[0],
+                unknown_beacon_true[1],
+                marker="o",
+                color="tab:red",
+                label="Unknown beacon (true)",
+            )
+        if initial_beacon_guess is not None:
+            ax_traj.scatter(
+                initial_beacon_guess[0],
+                initial_beacon_guess[1],
+                marker="x",
+                color="tab:purple",
+                s=80,
+                label="Initial beacon guess",
+            )
+
+        ax_traj.set_aspect("equal", adjustable="box")
+        ax_traj.set_xlabel("X [m]", fontsize=LABEL_FONTSIZE)
+        ax_traj.set_ylabel("Y [m]", fontsize=LABEL_FONTSIZE)
+        ax_traj.legend()
+        ax_traj.grid(True)
+
+        title = "True vs Estimated Trajectory"
+        if robot_id is not None and (total_robots is None or total_robots > 1):
+            title += f" (Robot {robot_id})"
+        ax_traj.set_title(title, fontsize=TITLE_FONTSIZE)
+        _style_ax(ax_traj)
+
+        _apply_ddg_ticks_and_grid(
+            ax_traj,
+            pos_true,
+            grid_x_limits=(0.0, 35.0),
+            grid_y_limits=(0.0, 21.0),
         )
-    if initial_beacon_guess is not None:
-        ax_traj.scatter(
-            initial_beacon_guess[0],
-            initial_beacon_guess[1],
-            marker="x",
-            color="tab:purple",
-            s=80,
-            label="Initial beacon guess",
-        )
-
-    ax_traj.set_aspect("equal", adjustable="box")
-    ax_traj.set_xlabel("X [m]", fontsize=LABEL_FONTSIZE)
-    ax_traj.set_ylabel("Y [m]", fontsize=LABEL_FONTSIZE)
-    ax_traj.legend()
-    ax_traj.grid(True)
-
-    title = "True vs Estimated Trajectory"
-    if robot_id is not None and (total_robots is None or total_robots > 1):
-        title += f" (Robot {robot_id})"
-    ax_traj.set_title(title, fontsize=TITLE_FONTSIZE)
-    _style_ax(ax_traj)
-
-    _apply_ddg_ticks_and_grid(
-        ax_traj,
-        pos_true,
-        grid_x_limits=(0.0, 35.0),
-        grid_y_limits=(0.0, 21.0),
-    )
 
     # Time series plots for components and error (shared figure for all robots if desired)
     standalone = False
     if total_robots is not None and robot_id is not None and total_robots > 1:
         _, axes_list = _ensure_shared_position_axes(total_robots)
         row_axes = axes_list[robot_id]
+        for a in row_axes:
+            a.clear()
     else:
         fig, row_axes = plt.subplots(3, 1, figsize=(10, 8), sharex=True)
         fig.suptitle("Position components", fontsize=TITLE_FONTSIZE)
@@ -481,11 +500,78 @@ def plot_positions(
         fig.tight_layout(rect=[0, 0, 1, 0.96])
 
 
+def plot_positions_combined(
+    robots,
+    beacons=None,
+    title="True vs Estimated Trajectories",
+):
+    fig, ax = plt.subplots(figsize=(12, 7))
+    colors = ["tab:blue", "tab:orange", "tab:green", "tab:red"]
+
+    all_true = []
+    for idx, robot in enumerate(robots):
+        color = colors[idx % len(colors)]
+        pos_true = robot.pos_true
+        pos_est = robot.p_nominal
+        all_true.append(pos_true)
+
+        ax.plot(
+            pos_true[:, 0],
+            pos_true[:, 1],
+            color=color,
+            label=f"Robot {idx} true",
+        )
+        ax.plot(
+            pos_est[:, 0],
+            pos_est[:, 1],
+            color=color,
+            linestyle="--",
+            alpha=0.8,
+            label=f"Robot {idx} estimated",
+        )
+        if len(pos_true) > 0:
+            ax.scatter(
+                pos_true[0, 0],
+                pos_true[0, 1],
+                marker="o",
+                color=color,
+                s=60,
+            )
+
+    if beacons is not None and len(beacons) > 0:
+        beacons_xy = beacons[:, :2]
+        ax.scatter(
+            beacons_xy[:, 0],
+            beacons_xy[:, 1],
+            marker="o",
+            color="tab:purple",
+            label="Known beacons",
+            s=80,
+        )
+
+    ax.set_aspect("equal", adjustable="box")
+    ax.set_xlabel("X [m]", fontsize=LABEL_FONTSIZE)
+    ax.set_ylabel("Y [m]", fontsize=LABEL_FONTSIZE)
+    ax.set_title(title, fontsize=TITLE_FONTSIZE)
+    ax.legend()
+    ax.grid(True)
+    _style_ax(ax)
+
+    if all_true:
+        all_true = np.vstack(all_true)
+        x_margin = 1.0
+        y_margin = 1.0
+        ax.set_xlim(all_true[:, 0].min() - x_margin, all_true[:, 0].max() + x_margin)
+        ax.set_ylim(all_true[:, 1].min() - y_margin, all_true[:, 1].max() + y_margin)
+
+
 def plot_bias(t, bias_true, b_ins, b_hat=None, robot_id=None, total_robots=None):
     standalone = False
     if total_robots is not None and robot_id is not None and total_robots > 1:
         _, axes_list = _ensure_shared_bias_axes(total_robots)
         axes = axes_list[robot_id]
+        for a in axes:
+            a.clear()
     else:
         fig, axes = plt.subplots(2, 1, figsize=(10, 5), sharex=True)
         # UPDATED: larger title + closer to plots
@@ -509,9 +595,16 @@ def plot_bias(t, bias_true, b_ins, b_hat=None, robot_id=None, total_robots=None)
     axes[1].legend()
     axes[1].grid(True)
 
+    for axis_idx, ax in enumerate(axes):
+        true_vals = bias_true[:, axis_idx]
+        true_min = np.min(true_vals)
+        true_max = np.max(true_vals)
+        _set_bias_axis_scale(ax, true_min, true_max)
+
     for a in axes:
         _style_ax(a)
 
     if standalone:
         # UPDATED: keep space for the suptitle but not too much
         fig.tight_layout(rect=[0, 0, 1, 0.92])
+        fig.subplots_adjust(left=0.14, bottom=0.14)

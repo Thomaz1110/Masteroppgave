@@ -62,6 +62,124 @@ def trapezoid_segment(distance, vmax, amax, dt):
     return t, p, v, a
 
 
+def parallel_x_trajectory_generator(
+    dt,
+    duration_s,
+    robot_id,
+    standstill_time=0.0,
+    track_spacing_lines=2,
+    cell_size_y=0.505,
+    start_x=0.3525,
+    base_y=0.2525,
+    vmax=3.1,
+    amax=0.8,
+):
+    """
+    Generate a straight horizontal trajectory for parallel two-robot tests.
+
+    Each robot drives along +x on its own horizontal track. Track separation is
+    set in multiples of the grid-line spacing to keep the robots close.
+    Warehouse bounds are intentionally ignored for this test scenario.
+    """
+    total_samples = int(np.round(duration_s / dt))
+    if total_samples <= 0:
+        return np.array([]), np.empty((0, 2)), np.empty((0, 2)), np.empty((0, 2))
+
+    standstill_samples = int(np.round(standstill_time / dt))
+    move_samples = max(0, total_samples - standstill_samples)
+
+    y_track = base_y + robot_id * track_spacing_lines * cell_size_y
+    start_pos = np.array([start_x, y_track], dtype=float)
+
+    pos = []
+    vel = []
+    acc = []
+
+    for _ in range(min(standstill_samples, total_samples)):
+        pos.append(start_pos.copy())
+        vel.append(np.zeros(2))
+        acc.append(np.zeros(2))
+
+    if move_samples > 0:
+        move_duration = move_samples * dt
+        distance = vmax * move_duration + 2.0 * (vmax**2 / amax)
+        _, p_seg, v_seg, a_seg = trapezoid_segment(distance, vmax, amax, dt)
+
+        if len(p_seg) < move_samples:
+            raise ValueError("Parallel trajectory segment is shorter than requested duration")
+
+        p_seg = p_seg[:move_samples]
+        v_seg = v_seg[:move_samples]
+        a_seg = a_seg[:move_samples]
+
+        for k in range(move_samples):
+            pos.append(start_pos + np.array([p_seg[k], 0.0]))
+            vel.append(np.array([v_seg[k], 0.0]))
+            acc.append(np.array([a_seg[k], 0.0]))
+
+    t_total = np.arange(len(pos)) * dt
+    return t_total, np.array(pos), np.array(vel), np.array(acc)
+
+
+def parallel_y_trajectory_generator(
+    dt,
+    duration_s,
+    robot_id,
+    standstill_time=0.0,
+    track_spacing_lines=2,
+    cell_size_x=0.705,
+    start_y=0.2525,
+    base_x=0.3525,
+    vmax=3.1,
+    amax=0.8,
+):
+    """
+    Generate a straight vertical trajectory for parallel two-robot tests.
+
+    Each robot drives along +y on its own vertical track. Track separation is
+    set in multiples of the grid-line spacing to keep the robots close.
+    Warehouse bounds are intentionally ignored for this test scenario.
+    """
+    total_samples = int(np.round(duration_s / dt))
+    if total_samples <= 0:
+        return np.array([]), np.empty((0, 2)), np.empty((0, 2)), np.empty((0, 2))
+
+    standstill_samples = int(np.round(standstill_time / dt))
+    move_samples = max(0, total_samples - standstill_samples)
+
+    x_track = base_x + robot_id * track_spacing_lines * cell_size_x
+    start_pos = np.array([x_track, start_y], dtype=float)
+
+    pos = []
+    vel = []
+    acc = []
+
+    for _ in range(min(standstill_samples, total_samples)):
+        pos.append(start_pos.copy())
+        vel.append(np.zeros(2))
+        acc.append(np.zeros(2))
+
+    if move_samples > 0:
+        move_duration = move_samples * dt
+        distance = vmax * move_duration + 2.0 * (vmax**2 / amax)
+        _, p_seg, v_seg, a_seg = trapezoid_segment(distance, vmax, amax, dt)
+
+        if len(p_seg) < move_samples:
+            raise ValueError("Parallel trajectory segment is shorter than requested duration")
+
+        p_seg = p_seg[:move_samples]
+        v_seg = v_seg[:move_samples]
+        a_seg = a_seg[:move_samples]
+
+        for k in range(move_samples):
+            pos.append(start_pos + np.array([0.0, p_seg[k]]))
+            vel.append(np.array([0.0, v_seg[k]]))
+            acc.append(np.array([0.0, a_seg[k]]))
+
+    t_total = np.arange(len(pos)) * dt
+    return t_total, np.array(pos), np.array(vel), np.array(acc)
+
+
 def trajectory_generator(dt, path_points=None, segment_length=50, path_lengths=None,
                         vmax=3.1, amax=0.8, standstill_time=0.0, pattern="square"):
     """

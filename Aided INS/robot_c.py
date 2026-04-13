@@ -16,6 +16,7 @@ class Robot:
         duration_s,
         trajectory_seed,
         imu_seed=None,
+        initial_bias_seed=None,
     ):
         self.robot_id = robot_id
         self.dt = dt
@@ -34,7 +35,9 @@ class Robot:
         )
         self.N = len(self.t)
 
-        self.f_imu, self.bias_true = imu_acc.sim_accelerometer(self.acc_true, dt, seed=imu_seed)
+        self.f_imu, self.bias_true = imu_acc.sim_accelerometer(
+            self.acc_true, dt, seed=imu_seed, initial_bias_seed=initial_bias_seed
+        )
 
         self.p_nominal = np.zeros_like(self.pos_true)
         self.v_nominal = np.zeros_like(self.vel_true)

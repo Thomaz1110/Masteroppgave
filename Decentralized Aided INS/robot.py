@@ -9,6 +9,7 @@ Contains:
 
 import numpy as np
 import random_trajectory
+import trajectory
 import imu_acc
 from eskf_single import ESKFSingleRobot
 
@@ -26,6 +27,9 @@ class Robot:
         duration_s,
         trajectory_seed,
         imu_seed=None,
+        initial_bias_seed=None,
+        trajectory_mode="random",
+        parallel_track_spacing_lines=2,
     ):
         self.robot_id = robot_id
         self.dt = dt
@@ -36,15 +40,36 @@ class Robot:
             )
         self.dominant_axis_method = dominant_axis_method
 
-        self.t, self.pos_true, self.vel_true, self.acc_true = random_trajectory.random_trajectory_generator(
-            dt=dt,
-            duration_s=duration_s,
-            standstill_time=standstill_time,
-            seed=trajectory_seed,
-        )
+        if trajectory_mode == "random":
+            self.t, self.pos_true, self.vel_true, self.acc_true = random_trajectory.random_trajectory_generator(
+                dt=dt,
+                duration_s=duration_s,
+                standstill_time=standstill_time,
+                seed=trajectory_seed,
+            )
+        elif trajectory_mode == "parallel_x":
+            self.t, self.pos_true, self.vel_true, self.acc_true = trajectory.parallel_x_trajectory_generator(
+                dt=dt,
+                duration_s=duration_s,
+                robot_id=robot_id,
+                standstill_time=standstill_time,
+                track_spacing_lines=parallel_track_spacing_lines,
+            )
+        elif trajectory_mode == "parallel_y":
+            self.t, self.pos_true, self.vel_true, self.acc_true = trajectory.parallel_y_trajectory_generator(
+                dt=dt,
+                duration_s=duration_s,
+                robot_id=robot_id,
+                standstill_time=standstill_time,
+                track_spacing_lines=parallel_track_spacing_lines,
+            )
+        else:
+            raise ValueError("trajectory_mode must be 'random', 'parallel_x', or 'parallel_y'")
         self.N = len(self.t)
 
-        self.f_imu, self.bias_true = imu_acc.sim_accelerometer(self.acc_true, dt, seed=imu_seed)
+        self.f_imu, self.bias_true = imu_acc.sim_accelerometer(
+            self.acc_true, dt, seed=imu_seed, initial_bias_seed=initial_bias_seed
+        )
 
         self.p_nominal = np.zeros_like(self.pos_true)
         self.v_nominal = np.zeros_like(self.vel_true)

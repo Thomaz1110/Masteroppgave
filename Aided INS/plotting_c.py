@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.ticker import FormatStrFormatter
 
 # ------------------ GLOBAL STYLE SETTINGS ------------------
 TITLE_FONTSIZE = 18
@@ -20,6 +21,19 @@ _pos_comp_total = None
 _bias_fig = None
 _bias_axes = None
 _bias_total = None
+
+
+def _set_bias_axis_scale(ax, true_min, true_max, step=0.005):
+    true_span = true_max - true_min
+    margin = max(0.001, 0.1 * true_span)
+    lower = step * np.floor((true_min - margin) / step)
+    upper = step * np.ceil((true_max + margin) / step)
+    if np.isclose(lower, upper):
+        lower -= step
+        upper += step
+    ax.set_ylim(lower, upper)
+    ax.set_yticks(np.arange(lower, upper + 0.5 * step, step))
+    ax.yaxis.set_major_formatter(FormatStrFormatter("%.3f"))
 
 
 def _apply_ddg_ticks_and_grid(ax, pos_true, grid_x_limits=None, grid_y_limits=None):
@@ -105,7 +119,8 @@ def _ensure_shared_bias_axes(total_robots):
         cols = 2 if total_robots > 1 else 1
         rows = int(np.ceil(total_robots / cols))
         _bias_fig = plt.figure(figsize=(6 * cols, 4 * rows))
-        _bias_fig.suptitle("Bias estimates", fontsize=TITLE_FONTSIZE)
+        _bias_fig.suptitle("Bias estimates", fontsize=TITLE_FONTSIZE, y=0.98)
+        _bias_fig.subplots_adjust(left=0.08, right=0.98, bottom=0.12, top=0.86, wspace=0.18, hspace=0.18)
         subfigs = _bias_fig.subfigures(rows, cols, squeeze=False)
         axes_per_robot = []
         robot_idx = 0
@@ -115,6 +130,7 @@ def _ensure_shared_bias_axes(total_robots):
                     subfig = subfigs[r][c]
                     subfig.suptitle(f"Robot {robot_idx}", fontsize=TITLE_FONTSIZE-4)
                     ax_row = subfig.subplots(2, 1, sharex=True)
+                    subfig.subplots_adjust(left=0.16, bottom=0.20, right=0.98, top=0.88, hspace=0.24)
                     for a in ax_row:
                         _style_ax(a)
                     axes_per_robot.append(ax_row)
@@ -414,6 +430,8 @@ def plot_bias(t, bias_true, b_ins, b_hat=None, robot_id=None, total_robots=None)
     if total_robots is not None and robot_id is not None and total_robots > 1:
         _, axes_list = _ensure_shared_bias_axes(total_robots)
         axes = axes_list[robot_id]
+        for a in axes:
+            a.clear()
     else:
         fig, axes = plt.subplots(2, 1, figsize=(10, 5), sharex=True)
         # UPDATED: larger title + closer to plots
@@ -437,9 +455,16 @@ def plot_bias(t, bias_true, b_ins, b_hat=None, robot_id=None, total_robots=None)
     axes[1].legend()
     axes[1].grid(True)
 
+    for axis_idx, ax in enumerate(axes):
+        true_vals = bias_true[:, axis_idx]
+        true_min = np.min(true_vals)
+        true_max = np.max(true_vals)
+        _set_bias_axis_scale(ax, true_min, true_max)
+
     for a in axes:
         _style_ax(a)
 
     if standalone:
         # UPDATED: keep space for the suptitle but not too much
         fig.tight_layout(rect=[0, 0, 1, 0.92])
+        fig.subplots_adjust(left=0.14, bottom=0.14)

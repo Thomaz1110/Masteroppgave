@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from robot import Robot, initialize_robot_positions
-import ins_plot
+import plotting as ins_plot
 from config import (
     dt,
     sigma_acc,
@@ -14,6 +14,7 @@ from config import (
     initial_bias_var,
     trajectory_seed_base,
     imu_seed_base,
+    initial_bias_seed_base,
     range_seed,
     grid_x_limits,
     grid_y_limits,
@@ -24,6 +25,8 @@ num_robots = 2
 duration_s = 500.0
 standstill_time = 20.0                  # [s] initial standstill period for calibration
 use_true_initial_position = True        # True => all robots start at true positions
+trajectory_mode = "random"              # "random", "parallel_x", or "parallel_y"
+parallel_track_spacing_lines = 10       # separation in grid lines between the two parallel tracks
 
 
 vel_threshold = 0.5                     # [m/s] velocity threshold for dominant-axis detection
@@ -37,8 +40,8 @@ robot_ranging = True                    # robot-to-robot ranging
 coop_type = "mutualistic"               # "mutualistic" or "commensalistic" cooperative range updates for robot-to-robot ranging
 force_uncorrelated_robot_range = True   # If True, ignore cooperative-history correlation and treat robot pairs as uncorrelated
 
-beacon_range_rate_hz = 1.0              # [Hz] robot-to-beacon range rate
-robot_range_rate_hz = 1.0               # [Hz] robot-to-robot range rate
+beacon_range_rate_hz = 0.1              # [Hz] robot-to-beacon range rate
+robot_range_rate_hz = 0.1               # [Hz] robot-to-robot range rate
 range_measurement_stop_time = None      # seconds; None => entire run
 
 plot_acc = 0
@@ -63,6 +66,9 @@ for idx in range(num_robots):
         duration_s=duration_s,
         trajectory_seed=trajectory_seed_base + idx,
         imu_seed=imu_seed_base + idx,
+        initial_bias_seed=initial_bias_seed_base + idx,
+        trajectory_mode=trajectory_mode,
+        parallel_track_spacing_lines=parallel_track_spacing_lines,
     )
     robots.append(robot)
 
@@ -255,17 +261,36 @@ if plot_vel:
         ins_plot.plot_velocity(robot.t, robot.vel_true, robot.v_nominal, robot_id=idx)
 
 if plot_pos:
-    for idx, robot in enumerate(robots):
-        ins_plot.plot_positions(
-            robot.t,
-            robot.pos_true,
-            robot.p_nominal,
-            "random",
+    if trajectory_mode in {"parallel_x", "parallel_y"} and num_robots == 2:
+        ins_plot.plot_positions_combined(
+            robots,
             beacons=beacons_all if beacon_ranging else None,
-            standstill_time=standstill_time,
-            robot_id=idx,
-            total_robots=num_robots,
+            title=f"{trajectory_mode}: True vs Estimated",
         )
+        for idx, robot in enumerate(robots):
+            ins_plot.plot_positions(
+                robot.t,
+                robot.pos_true,
+                robot.p_nominal,
+                trajectory_mode,
+                beacons=beacons_all if beacon_ranging else None,
+                standstill_time=standstill_time,
+                robot_id=idx,
+                total_robots=num_robots,
+                show_trajectory_plot=False,
+            )
+    else:
+        for idx, robot in enumerate(robots):
+            ins_plot.plot_positions(
+                robot.t,
+                robot.pos_true,
+                robot.p_nominal,
+                trajectory_mode,
+                beacons=beacons_all if beacon_ranging else None,
+                standstill_time=standstill_time,
+                robot_id=idx,
+                total_robots=num_robots,
+            )
 
 if plot_bias:
     for idx, robot in enumerate(robots):
