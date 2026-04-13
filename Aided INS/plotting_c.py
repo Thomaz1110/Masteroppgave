@@ -468,3 +468,46 @@ def plot_bias(t, bias_true, b_ins, b_hat=None, robot_id=None, total_robots=None)
         # UPDATED: keep space for the suptitle but not too much
         fig.tight_layout(rect=[0, 0, 1, 0.92])
         fig.subplots_adjust(left=0.14, bottom=0.14)
+
+
+def plot_joint_covariance_matrix(P_avg, sample_times):
+    n = P_avg.shape[0]
+    fig, ax = plt.subplots(figsize=(9, 7.5))
+    ax.imshow(np.ones_like(P_avg), cmap="gray", vmin=0.0, vmax=1.0, aspect="equal")
+
+    ax.set_title("Average Joint Covariance Matrix", fontsize=16)
+    ax.set_xlabel("State index", fontsize=12)
+    ax.set_ylabel("State index", fontsize=12)
+    tick_idx = np.arange(n)
+    ax.set_xticks(tick_idx)
+    ax.set_yticks(tick_idx)
+    ax.set_xticks(np.arange(-0.5, n, 1), minor=True)
+    ax.set_yticks(np.arange(-0.5, n, 1), minor=True)
+    ax.grid(which="minor", color="black", linestyle="-", linewidth=0.8)
+    ax.tick_params(which="minor", bottom=False, left=False)
+
+    if P_avg.shape == (12, 12):
+        labels = [
+            "p0x", "p0y", "v0x", "v0y", "b0x", "b0y",
+            "p1x", "p1y", "v1x", "v1y", "b1x", "b1y",
+        ]
+        ax.set_xticklabels(labels, rotation=45, ha="right")
+        ax.set_yticklabels(labels)
+        ax.axhline(5.5, color="k", linewidth=1.0)
+        ax.axvline(5.5, color="k", linewidth=1.0)
+
+    for i in range(n):
+        for j in range(n):
+            ax.text(
+                j,
+                i,
+                f"{P_avg[i, j]:.4f}",
+                ha="center",
+                va="center",
+                fontsize=8,
+                color="black",
+            )
+
+    times_text = ", ".join(f"{ts:.1f}" for ts in sample_times)
+    fig.text(0.5, 0.01, f"Averaged over t = [{times_text}] s", ha="center", fontsize=10)
+    fig.tight_layout(rect=[0, 0.03, 1, 1])

@@ -40,8 +40,8 @@ robot_ranging = True                    # robot-to-robot ranging
 coop_type = "mutualistic"               # "mutualistic" or "commensalistic" cooperative range updates for robot-to-robot ranging
 force_uncorrelated_robot_range = True   # If True, ignore cooperative-history correlation and treat robot pairs as uncorrelated
 
-beacon_range_rate_hz = 0.1              # [Hz] robot-to-beacon range rate
-robot_range_rate_hz = 0.1               # [Hz] robot-to-robot range rate
+beacon_range_rate_hz = 1.0              # [Hz] robot-to-beacon range rate
+robot_range_rate_hz = 1.0               # [Hz] robot-to-robot range rate
 range_measurement_stop_time = None      # seconds; None => entire run
 
 plot_acc = 0
