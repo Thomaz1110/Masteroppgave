@@ -45,8 +45,9 @@ plot_vel = 0
 plot_pos = 1
 plot_bias = 1
 
-plot_average_joint_covariance = True
+plot_mean_covariance_comparison = True
 average_joint_covariance_num_samples = 5
+ci_inflation_omega = 0.5
 
 
 
@@ -107,19 +108,14 @@ for idx in range(num_robots):
     kf.P[offset + 4, offset + 4] = initial_bias_var
     kf.P[offset + 5, offset + 5] = initial_bias_var
 
-# Set up for averaging joint covariance matrix at specified times
-avg_cov_times = np.linspace(0.0, duration_s, average_joint_covariance_num_samples).tolist()
-avg_cov_times = sorted(avg_cov_times)
-next_avg_cov_idx = 0
-avg_cov_sum = np.zeros_like(kf.P)
-avg_cov_count = 0
-avg_cov_sample_times = []
-if plot_average_joint_covariance:
-    while next_avg_cov_idx < len(avg_cov_times) and avg_cov_times[next_avg_cov_idx] <= 0.0:
-        avg_cov_sum += kf.P.copy()
-        avg_cov_count += 1
-        avg_cov_sample_times.append(0.0)
-        next_avg_cov_idx += 1
+covariance_averager = ins_plot.initialize_joint_covariance_averager(
+    plot_mean_covariance_comparison,
+    duration_s,
+    average_joint_covariance_num_samples,
+    kf.P,
+    num_robots,
+    ci_inflation_omega,
+)
 
 # Determine dominant-axis velocity update intervals in steps
 if velocity_update_rate_hz > 0.0:
@@ -243,12 +239,7 @@ for k in range(1, N):
             robot.apply_correction(k, corrections[idx]) # Apply corrections to each robot's nominal state
         kf.reset_error_state()                          # Reset error state after applying corrections
 
-    if plot_average_joint_covariance:
-        while next_avg_cov_idx < len(avg_cov_times) and t[k] >= avg_cov_times[next_avg_cov_idx]:
-            avg_cov_sum += kf.P.copy()
-            avg_cov_count += 1
-            avg_cov_sample_times.append(avg_cov_times[next_avg_cov_idx])
-            next_avg_cov_idx += 1
+    ins_plot.update_joint_covariance_averager(covariance_averager, t[k], kf.P)
 
 
     # Robot-to-robot range updates
@@ -319,7 +310,6 @@ if plot_bias:
             total_robots=num_robots,
         )
 
-if plot_average_joint_covariance and avg_cov_count > 0:
-    ins_plot.plot_joint_covariance_matrix(avg_cov_sum / avg_cov_count, avg_cov_sample_times)
+ins_plot.finalize_joint_covariance_averager(covariance_averager)
 
 plt.show()

@@ -470,12 +470,12 @@ def plot_bias(t, bias_true, b_ins, b_hat=None, robot_id=None, total_robots=None)
         fig.subplots_adjust(left=0.14, bottom=0.14)
 
 
-def plot_joint_covariance_matrix(P_avg, sample_times):
+def plot_joint_covariance_matrix(P_avg, sample_times, title="Average Joint Covariance Matrix"):
     n = P_avg.shape[0]
     fig, ax = plt.subplots(figsize=(9, 7.5))
     ax.imshow(np.ones_like(P_avg), cmap="gray", vmin=0.0, vmax=1.0, aspect="equal")
 
-    ax.set_title("Average Joint Covariance Matrix", fontsize=16)
+    ax.set_title(title, fontsize=16)
     ax.set_xlabel("State index", fontsize=12)
     ax.set_ylabel("State index", fontsize=12)
     tick_idx = np.arange(n)
@@ -511,3 +511,72 @@ def plot_joint_covariance_matrix(P_avg, sample_times):
     times_text = ", ".join(f"{ts:.1f}" for ts in sample_times)
     fig.text(0.5, 0.01, f"Averaged over t = [{times_text}] s", ha="center", fontsize=10)
     fig.tight_layout(rect=[0, 0.03, 1, 1])
+
+
+def _build_ci_inflated_block_diagonal(P_joint, num_robots, omega):
+    if num_robots != 2:
+        raise ValueError("CI-inflated block-diagonal summary currently supports num_robots == 2 only")
+    if not (0.0 < omega < 1.0):
+        raise ValueError("omega must satisfy 0 < omega < 1")
+
+    P_inflated = np.zeros_like(P_joint)
+    P_inflated[0:6, 0:6] = P_joint[0:6, 0:6] / omega
+    P_inflated[6:12, 6:12] = P_joint[6:12, 6:12] / (1.0 - omega)
+    return P_inflated
+
+
+def initialize_joint_covariance_averager(enabled, duration_s, num_samples, initial_P, num_robots, omega):
+    averager = {
+        "enabled": enabled,
+        "num_robots": num_robots,
+        "omega": omega,
+        "times": np.linspace(0.0, duration_s, num_samples).tolist() if enabled else [],
+        "next_idx": 0,
+        "sum_real": np.zeros_like(initial_P),
+        "sum_inflated": np.zeros_like(initial_P),
+        "count": 0,
+        "sample_times": [],
+    }
+    if enabled:
+        update_joint_covariance_averager(averager, 0.0, initial_P)
+    return averager
+
+
+def update_joint_covariance_averager(averager, t_now, P):
+    if not averager["enabled"]:
+        return
+    times = averager["times"]
+    while averager["next_idx"] < len(times) and t_now >= times[averager["next_idx"]]:
+        averager["sum_real"] += P.copy()
+        averager["sum_inflated"] += _build_ci_inflated_block_diagonal(
+            P, averager["num_robots"], averager["omega"]
+        )
+        averager["count"] += 1
+        averager["sample_times"].append(times[averager["next_idx"]])
+        averager["next_idx"] += 1
+
+
+def finalize_joint_covariance_averager(averager):
+    if not averager["enabled"] or averager["count"] == 0:
+        return
+
+    P_mean = averager["sum_real"] / averager["count"]
+    P_inflated_mean = averager["sum_inflated"] / averager["count"]
+    fro_norm_real = np.linalg.norm(P_mean, ord="fro")
+    fro_norm_inflated = np.linalg.norm(P_inflated_mean, ord="fro")
+    fro_norm_ratio = fro_norm_inflated / fro_norm_real if fro_norm_real > 0.0 else np.nan
+
+    print(f"Frobenius norm of mean joint P: {fro_norm_real:.6f}")
+    print(f"Frobenius norm of mean inflated joint P: {fro_norm_inflated:.6f}")
+    print(f"Frobenius norm ratio (inflated / real): {fro_norm_ratio:.6f}")
+
+    plot_joint_covariance_matrix(
+        P_mean,
+        averager["sample_times"],
+        title="Average Joint Covariance Matrix",
+    )
+    plot_joint_covariance_matrix(
+        P_inflated_mean,
+        averager["sample_times"],
+        title=f"Average CI-Inflated Block-Diagonal Covariance (omega = {averager['omega']:.2f})",
+    )
