@@ -238,7 +238,7 @@ for k in range(1, N):
         y_meas = np.linalg.norm(diff_true) + range_rngs[0].normal(scale=sigma_range)
         y_meas = max(y_meas, 0.0)
 
-        msg_to_reflector = initiator_robot.do_robot_range_as_initiator(
+        msg_to_reflector = initiator_robot.inflated_covariance_range_update_as_initiator(
             k, y_meas, sigma_range**2, reflector_packet, coop_type, force_uncorrelated_robot_range
         )
         reflector_robot.apply_coop_update_from_initiator(k, msg_to_reflector)

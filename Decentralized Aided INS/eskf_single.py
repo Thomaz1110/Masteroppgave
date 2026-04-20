@@ -116,7 +116,7 @@ class ESKFSingleRobot:
         self.deltax = np.zeros_like(self.deltax)
 
     @staticmethod
-    def coop_robot_range(
+    def inflated_covariance_range_update(
         Pi, Pj, p_i, p_j, y_meas, R, Vi, Vj, type, omega_grid=None, force_uncorrelated=False
     ):
         """

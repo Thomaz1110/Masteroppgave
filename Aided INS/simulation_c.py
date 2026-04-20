@@ -45,10 +45,9 @@ plot_vel = 0
 plot_pos = 1
 plot_bias = 1
 
-plot_mean_covariance_comparison = True
+plot_mean_covariance_comparison = False
 average_joint_covariance_num_samples = 5
 ci_inflation_omega = 0.5
-
 
 
 

@@ -141,7 +141,7 @@ class Robot:
         self.apply_filter_correction(k)
         self.V_coop = int(msg["V_new"])
 
-    def do_robot_range_as_initiator(self, k, y_meas, R, reflector_packet, coop_type, force_uncorrelated=False):
+    def inflated_covariance_range_update_as_initiator(self, k, y_meas, R, reflector_packet, coop_type, force_uncorrelated=False):
         p_i = self.p_nominal[k].copy()
         Pi = self.eskf.P.copy()
         Vi = int(self.V_coop)
@@ -150,7 +150,7 @@ class Robot:
         Pj = np.asarray(reflector_packet["P"], dtype=float).reshape(6, 6)
         Vj = int(reflector_packet["V"])
 
-        di, Pi_new, dj, Pj_new, V_new = ESKFSingleRobot.coop_robot_range(
+        di, Pi_new, dj, Pj_new, V_new = ESKFSingleRobot.inflated_covariance_range_update(
             Pi=Pi,
             Pj=Pj,
             p_i=p_i,
