@@ -258,24 +258,34 @@ class ESKFSingleRobot:
 
         I = np.eye(6)
         A = I - K_i @ Hi
-        P_i_from_j = A @ Pi @ A.T + K_i @ R_eff @ K_i.T
+        P_i_from_j = A @ Pi @ A.T + K_i @ R_eff @ K_i.T 
         P_i_from_j = 0.5 * (P_i_from_j + P_i_from_j.T)
 
         return delta_i_from_j, P_i_from_j.reshape(6, 6)
 
     @staticmethod
-    def find_covariance_intersection_weight(P_prior, P_pseudo, objective):
+    def covariance_intersection_fuse(P_prior, delta_pseudo, P_pseudo, objective):
         """
-        Find a scalar covariance-intersection weight by grid search.
+        Fuse a zero-mean prior and a pseudo-posterior using covariance intersection.
 
-        The search minimizes the fused covariance size over a uniform grid on
-        w in [1e-3, 1 - 1e-3]. The default objective is logdet(P_fused).
+        The CI weight is found by grid search on w in [1e-3, 1 - 1e-3],
+        minimizing either logdet(P_fused) or trace(P_fused). The prior mean is
+        assumed to be zero.
         """
         P_prior = np.asarray(P_prior, dtype=float).reshape(6, 6)
+        delta_pseudo = np.asarray(delta_pseudo, dtype=float).reshape(6, 1)
         P_pseudo = np.asarray(P_pseudo, dtype=float).reshape(6, 6)
 
-        eps = 1e-3
-        w_grid = np.linspace(eps, 1.0 - eps, 199)
+        ridge = 1e-12 * np.eye(6)
+        try:
+            P_prior_inv = np.linalg.inv(P_prior)
+        except np.linalg.LinAlgError:
+            P_prior_inv = np.linalg.inv(P_prior + ridge)
+
+        try:
+            P_pseudo_inv = np.linalg.inv(P_pseudo)
+        except np.linalg.LinAlgError:
+            P_pseudo_inv = np.linalg.inv(P_pseudo + ridge)
 
         def score_covariance(P):
             P = 0.5 * (P + P.T)
@@ -289,29 +299,20 @@ class ESKFSingleRobot:
                 return float(np.trace(P))
             raise ValueError("objective must be 'logdet' or 'trace'")
 
-        try:
-            P_prior_inv = np.linalg.inv(P_prior)
-            P_pseudo_inv = np.linalg.inv(P_pseudo)
-        except np.linalg.LinAlgError:
-            ridge = 1e-12 * np.eye(6)
-            P_prior_inv = np.linalg.inv(P_prior + ridge)
-            P_pseudo_inv = np.linalg.inv(P_pseudo + ridge)
-
+        eps = 1e-3
+        w_grid = np.linspace(eps, 1.0 - eps, 199)
         best_w = 0.5
         best_score = np.inf
 
-        # This loop finds the optimal covariance intersection weight w that minimizes the chosen objective (logdet or trace) of the fused covariance.  
         for w in w_grid:
-            info = w * P_prior_inv + (1.0 - w) * P_pseudo_inv
-            info = 0.5 * (info + info.T)
-            try:
-                P_fused = np.linalg.inv(info)
-            except np.linalg.LinAlgError:
-                continue
-
-            score = score_covariance(P_fused)
+            P_candidate = np.linalg.inv(w * P_prior_inv + (1.0 - w) * P_pseudo_inv)
+            score = score_covariance(P_candidate)
             if score < best_score:
                 best_score = score
                 best_w = float(w)
 
-        return best_w
+
+        P_fused = np.linalg.inv(best_w * P_prior_inv + (1.0 - best_w) * P_pseudo_inv)
+        delta_fused = P_fused @ ((1.0 - best_w) * P_pseudo_inv @ delta_pseudo)
+
+        return delta_fused.reshape(6, 1), P_fused.reshape(6, 6), float(best_w)
