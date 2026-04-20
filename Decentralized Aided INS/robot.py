@@ -141,6 +141,31 @@ class Robot:
         self.apply_filter_correction(k)
         self.V_coop = int(msg["V_new"])
 
+    def build_ci_update_packet(self, k, y_meas, R, initiator_packet):
+
+        p_j = self.p_nominal[k].copy()
+        Pj = self.eskf.P.copy()
+        Vj = int(self.V_coop)
+
+        p_i = np.asarray(initiator_packet["p_hat"], dtype=float).reshape(2)
+        Pi = np.asarray(initiator_packet["P"], dtype=float).reshape(6, 6)
+        Vi = int(initiator_packet["V"])
+
+        delta_i_from_j, P_i_from_j = ESKFSingleRobot.build_ci_pseudoposterior_from_range(
+            Pi=Pi,
+            Pj=Pj,
+            p_i=p_i,
+            p_j=p_j,
+            y_meas=y_meas,
+            R=R,
+        )
+
+        return {
+            "delta_pseudo": delta_i_from_j.reshape(6, 1),
+            "P_pseudo": P_i_from_j.reshape(6, 6),
+            "V_new": int(Vi) | int(Vj),
+        }
+
     def inflated_covariance_range_update_as_initiator(self, k, y_meas, R, reflector_packet, coop_type, force_uncorrelated=False):
         p_i = self.p_nominal[k].copy()
         Pi = self.eskf.P.copy()
