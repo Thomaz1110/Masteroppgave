@@ -220,3 +220,45 @@ class ESKFSingleRobot:
         V_new = int(Vi) | int(Vj)
     
         return di, Pi_new, dj, Pj_new, V_new
+
+    @staticmethod
+    def build_ci_pseudoposterior_from_range(Pi, Pj, p_i, p_j, y_meas, R):
+        """
+        Build a one-sided range-based pseudo-posterior for robot i.
+
+        The pseudo-posterior is formed at robot j by marginalizing robot j's
+        uncertainty into the effective measurement noise and then performing a
+        local EKF-style update for robot i only.
+        """
+        Pi = np.asarray(Pi, dtype=float).reshape(6, 6)
+        Pj = np.asarray(Pj, dtype=float).reshape(6, 6)
+        p_i = np.asarray(p_i, dtype=float).reshape(2)
+        p_j = np.asarray(p_j, dtype=float).reshape(2)
+        R = np.array([[float(R)]]) if np.isscalar(R) else np.asarray(R, dtype=float).reshape(1, 1)
+
+        diff_nom = p_i - p_j
+        dist_nom = max(np.linalg.norm(diff_nom), 1e-9)
+        residual = np.array([[float(y_meas - dist_nom)]])
+
+        u = diff_nom / dist_nom
+        Hi = np.zeros((1, 6))
+        Hj = np.zeros((1, 6))
+        Hi[0, 0:2] = u
+        Hj[0, 0:2] = -u
+
+        R_eff = Hj @ Pj @ Hj.T + R # Effective measurement noise for robot i after marginalizing robot j's uncertainty. This is a key step that accounts for the reflector's uncertainty in the initiator's update, enabling a consistent one-sided update without needing to share full state corrections or covariances. The initiator treats the reflector's uncertainty as part of the measurement noise, which allows it to perform an EKF-style update using only its own state and covariance.
+        S_i = Hi @ Pi @ Hi.T + R_eff
+
+        S_i = 0.5 * (S_i + S_i.T)   
+        if float(S_i[0, 0]) <= 0.0:
+            S_i[0, 0] = 1e-12
+
+        K_i = Pi @ Hi.T @ np.linalg.inv(S_i)
+        delta_i_from_j = (K_i @ residual).reshape(6, 1)
+
+        I = np.eye(6)
+        A = I - K_i @ Hi
+        P_i_from_j = A @ Pi @ A.T + K_i @ R_eff @ K_i.T
+        P_i_from_j = 0.5 * (P_i_from_j + P_i_from_j.T)
+
+        return delta_i_from_j, P_i_from_j.reshape(6, 6)
