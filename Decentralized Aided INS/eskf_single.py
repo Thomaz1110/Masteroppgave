@@ -262,3 +262,56 @@ class ESKFSingleRobot:
         P_i_from_j = 0.5 * (P_i_from_j + P_i_from_j.T)
 
         return delta_i_from_j, P_i_from_j.reshape(6, 6)
+
+    @staticmethod
+    def find_covariance_intersection_weight(P_prior, P_pseudo, objective):
+        """
+        Find a scalar covariance-intersection weight by grid search.
+
+        The search minimizes the fused covariance size over a uniform grid on
+        w in [1e-3, 1 - 1e-3]. The default objective is logdet(P_fused).
+        """
+        P_prior = np.asarray(P_prior, dtype=float).reshape(6, 6)
+        P_pseudo = np.asarray(P_pseudo, dtype=float).reshape(6, 6)
+
+        eps = 1e-3
+        w_grid = np.linspace(eps, 1.0 - eps, 199)
+
+        def score_covariance(P):
+            P = 0.5 * (P + P.T)
+            if objective == "logdet":
+                try:
+                    chol = np.linalg.cholesky(P)
+                except np.linalg.LinAlgError:
+                    return np.inf
+                return 2.0 * np.sum(np.log(np.diag(chol)))
+            if objective == "trace":
+                return float(np.trace(P))
+            raise ValueError("objective must be 'logdet' or 'trace'")
+
+        try:
+            P_prior_inv = np.linalg.inv(P_prior)
+            P_pseudo_inv = np.linalg.inv(P_pseudo)
+        except np.linalg.LinAlgError:
+            ridge = 1e-12 * np.eye(6)
+            P_prior_inv = np.linalg.inv(P_prior + ridge)
+            P_pseudo_inv = np.linalg.inv(P_pseudo + ridge)
+
+        best_w = 0.5
+        best_score = np.inf
+
+        # This loop finds the optimal covariance intersection weight w that minimizes the chosen objective (logdet or trace) of the fused covariance.  
+        for w in w_grid:
+            info = w * P_prior_inv + (1.0 - w) * P_pseudo_inv
+            info = 0.5 * (info + info.T)
+            try:
+                P_fused = np.linalg.inv(info)
+            except np.linalg.LinAlgError:
+                continue
+
+            score = score_covariance(P_fused)
+            if score < best_score:
+                best_score = score
+                best_w = float(w)
+
+        return best_w
