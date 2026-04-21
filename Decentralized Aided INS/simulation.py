@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-from robot import Robot, initialize_robot_positions
+from robot import Robot, initialize_robot_positions, simulate_range_measurement
 import plotting as ins_plot
 from config import (
     dt,
@@ -201,13 +201,10 @@ for k in range(1, N):
     if beacon_due:
         for idx, robot in enumerate(robots):
             beacon = beacons_all[current_beacon_index]                                          # 3D beacon position
-            initiator_true = np.array([robot.pos_true[k, 0], robot.pos_true[k, 1], 0.0])        # 3D robot position (z=0)
             initiator_nominal = np.array([robot.p_nominal[k, 0], robot.p_nominal[k, 1], 0.0])   # 3D nominal robot position
-            beacon_true, beacon_nominal = beacon, beacon 
+            beacon_nominal = beacon
 
-            diff_true = initiator_true - beacon_true                                         # True 3D vector for range measurement calculation            
-            y_meas = np.linalg.norm(diff_true) + range_rngs[idx].normal(scale=sigma_range)            # Simulated range measurement with noise
-            y_meas = max(y_meas, 0.0)                                                           # Ensure non-negative range measurement         
+            y_meas = simulate_range_measurement(robot, beacon, k, range_rngs[idx], sigma_range)                                                           
             
             robot.eskf.update_beacon_range(
                 z=y_meas,
@@ -219,8 +216,9 @@ for k in range(1, N):
         current_beacon_index = (current_beacon_index + 1) % len(beacons_all)
 
     
+    # Robot-to-robot range updates with cooperative information sharing
     if robot_range_due and num_robots == 2:
-
+        
         if robot0_is_next_initiator:
             initiator_robot = robots[0]
             reflector_robot = robots[1]
@@ -232,16 +230,18 @@ for k in range(1, N):
         
         reflector_packet = reflector_robot.get_coop_packet(k)
 
-        initiator_true = np.array([initiator_robot.pos_true[k, 0], initiator_robot.pos_true[k, 1], 0.0])
-        reflector_true = np.array([reflector_robot.pos_true[k, 0], reflector_robot.pos_true[k, 1], 0.0])
-        diff_true = initiator_true - reflector_true
-        y_meas = np.linalg.norm(diff_true) + range_rngs[0].normal(scale=sigma_range)
-        y_meas = max(y_meas, 0.0)
+        y_meas = simulate_range_measurement(initiator_robot, reflector_robot, k, range_rngs[initiator_robot.id], sigma_range)
+
 
         msg_to_reflector = initiator_robot.inflated_covariance_range_update_as_initiator(
             k, y_meas, sigma_range**2, reflector_packet, coop_type, force_uncorrelated_robot_range
         )
         reflector_robot.apply_coop_update_from_initiator(k, msg_to_reflector)
+
+
+
+
+
 
     if plot_pos_live and (k % plot_pos_live_every_n_steps == 0 or k == N - 1):
         for robot in robots:
@@ -249,6 +249,30 @@ for k in range(1, N):
 
 
  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 # Plotting

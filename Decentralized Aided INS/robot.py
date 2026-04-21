@@ -141,6 +141,7 @@ class Robot:
         self.apply_filter_correction(k)
         self.V_coop = int(msg["V_new"])
 
+
     def build_ci_update_packet(self, k, y_meas, R, initiator_packet):
 
         p_j = self.p_nominal[k].copy()
@@ -166,7 +167,7 @@ class Robot:
             "V_new": int(Vi) | int(Vj),
         }
 
-    def apply_ci_update(self, k, msg, objective="logdet"):
+    def apply_ci_update(self, k, msg, objective):
        
         P_prior = self.eskf.P.copy()
         delta_pseudo = np.asarray(msg["delta_pseudo"], dtype=float).reshape(6, 1)
@@ -183,6 +184,23 @@ class Robot:
         self.eskf.P = P_fused.reshape(6, 6)
         self.apply_filter_correction(k)
         self.V_coop = int(msg["V_new"])
+
+    def request_ci_range_update_as_initiator(
+        self,
+        k,
+        y_meas,
+        R,
+        reflector_robot,
+        objective="logdet",
+    ):
+        initiator_packet = self.get_coop_packet(k)
+        msg = reflector_robot.build_ci_update_packet(
+            k=k,
+            y_meas=y_meas,
+            R=R,
+            initiator_packet=initiator_packet,
+        )
+        self.apply_ci_update(k, msg, objective)
 
 
     def inflated_covariance_range_update_as_initiator(self, k, y_meas, R, reflector_packet, coop_type, force_uncorrelated=False):
@@ -268,3 +286,29 @@ def initialize_robot_positions(
                 candidate[0] = np.clip(candidate[0], grid_x_limits[0], grid_x_limits[1])
                 candidate[1] = np.clip(candidate[1], grid_y_limits[0], grid_y_limits[1])
                 robot.p_nominal[0] = candidate
+
+
+
+def simulate_range_measurement(initiator, reflector, k, rng, sigma_range):
+    
+#hasattr checks if object has attribute "pos_true", which means it's a Robot instance. If not, it is a beacon position passed directly as a numpy array.
+    
+    if hasattr(initiator, "pos_true"):
+        initiator_true = np.array(
+            [initiator.pos_true[k, 0], initiator.pos_true[k, 1], 0.0],
+            dtype=float,
+        )
+    else:
+        initiator_true = np.asarray(initiator, dtype=float).reshape(3)
+
+    if hasattr(reflector, "pos_true"):
+        reflector_true = np.array(
+            [reflector.pos_true[k, 0], reflector.pos_true[k, 1], 0.0],
+            dtype=float,
+        )
+    else:
+        reflector_true = np.asarray(reflector, dtype=float).reshape(3)
+
+    diff_true = initiator_true - reflector_true
+    y_meas = np.linalg.norm(diff_true) + rng.normal(scale=sigma_range)
+    return max(float(y_meas), 0.0)
