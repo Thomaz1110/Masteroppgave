@@ -166,6 +166,25 @@ class Robot:
             "V_new": int(Vi) | int(Vj),
         }
 
+    def apply_ci_update(self, k, msg, objective="logdet"):
+       
+        P_prior = self.eskf.P.copy()
+        delta_pseudo = np.asarray(msg["delta_pseudo"], dtype=float).reshape(6, 1)
+        P_pseudo = np.asarray(msg["P_pseudo"], dtype=float).reshape(6, 6)
+
+        delta_fused, P_fused, best_w = ESKFSingleRobot.covariance_intersection_fuse(
+            P_prior=P_prior,
+            delta_pseudo=delta_pseudo,
+            P_pseudo=P_pseudo,
+            objective=objective,
+        )
+
+        self.eskf.deltax = delta_fused.reshape(6, 1)
+        self.eskf.P = P_fused.reshape(6, 6)
+        self.apply_filter_correction(k)
+        self.V_coop = int(msg["V_new"])
+
+
     def inflated_covariance_range_update_as_initiator(self, k, y_meas, R, reflector_packet, coop_type, force_uncorrelated=False):
         p_i = self.p_nominal[k].copy()
         Pi = self.eskf.P.copy()
