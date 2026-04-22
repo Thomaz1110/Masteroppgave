@@ -164,16 +164,14 @@ class Robot:
             force_uncorrelated=force_uncorrelated,
         )
 
+
+        # initiator applies its correction immediately; reflector will apply upon receiving msg
         self.eskf.deltax = di
         self.eskf.P = Pi_new
         self.apply_filter_correction(k)
         self.V_coop = int(V_new)
 
-        if ic_coop_type == "commensalistic":
-            dj = np.zeros_like(dj)
-            Pj_new = Pj.copy()
-            V_new = int(Vj)
-        
+   
         msg_to_reflector = {
             "delta": dj,
             "P_new": Pj_new,
@@ -190,7 +188,7 @@ class Robot:
         y_meas,
         R,
         reflector_robot,
-        coop_type,
+        ic_coop_type,
         force_uncorrelated_robot_range,
     ):
         reflector_packet = reflector_robot.get_coop_packet(k)
@@ -199,10 +197,13 @@ class Robot:
             y_meas,
             R,
             reflector_packet,
-            coop_type,
+            ic_coop_type,
             force_uncorrelated_robot_range,
         )
-        reflector_robot.apply_ic_coop_update(k, msg_to_reflector)
+
+        # only apply cooperative update to reflector if mutualistic; in commensalistic case, initiator benefits but reflector does not update from this interaction
+        if ic_coop_type == "mutualistic":
+            reflector_robot.apply_ic_coop_update(k, msg_to_reflector)
 
 
 
