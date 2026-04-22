@@ -37,7 +37,9 @@ velocity_update_rate_hz = 10.0          # [Hz] dominant-axis zero-velocity updat
 use_virtual_measurements = True         # If True, use virtual measurements: dominant-axis velocity updates and initial standstill velocity updates
 beacon_ranging = False                  # robot-to-beacon ranging
 robot_ranging = True                    # robot-to-robot ranging
-coop_type = "mutualistic"               # "mutualistic" or "commensalistic" cooperative range updates for robot-to-robot ranging
+
+cooperative_range_method = "ic"         # "ic" (inflated covariance) or "ci" (covariance intersection) 
+ic_coop_type = "mutualistic"            # "mutualistic" or "commensalistic" cooperative range updates for robot-to-robot ranging
 force_uncorrelated_robot_range = True   # If True, ignore cooperative-history correlation and treat robot pairs as uncorrelated
 
 beacon_range_rate_hz = 1.0              # [Hz] robot-to-beacon range rate
@@ -228,15 +230,26 @@ for k in range(1, N):
             reflector_robot = robots[0]
             robot0_is_next_initiator = True
         
-        reflector_packet = reflector_robot.get_coop_packet(k)
+        y_meas = simulate_range_measurement(initiator_robot, reflector_robot, k, range_rngs[initiator_robot.robot_id], sigma_range)
 
-        y_meas = simulate_range_measurement(initiator_robot, reflector_robot, k, range_rngs[initiator_robot.id], sigma_range)
-
-
-        msg_to_reflector = initiator_robot.inflated_covariance_range_update_as_initiator(
-            k, y_meas, sigma_range**2, reflector_packet, coop_type, force_uncorrelated_robot_range
-        )
-        reflector_robot.apply_coop_update_from_initiator(k, msg_to_reflector)
+        if cooperative_range_method == "ic":
+            initiator_robot.request_ic_range_update(
+                k,
+                y_meas,
+                sigma_range**2,
+                reflector_robot,
+                ic_coop_type,
+                force_uncorrelated_robot_range
+            )
+        elif cooperative_range_method == "ci":
+            initiator_robot.request_ci_range_update(
+                k,
+                y_meas,
+                sigma_range**2,
+                reflector_robot
+            )
+        else:
+            raise ValueError("Invalid cooperative_range_method. Must be 'ic' or 'ci'.")
 
 
 

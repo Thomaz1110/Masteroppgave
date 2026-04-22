@@ -135,7 +135,7 @@ class Robot:
             "V": int(self.V_coop),
         }
 
-    def apply_coop_update_from_initiator(self, k, msg):
+    def apply_ic_coop_update(self, k, msg):
         self.eskf.deltax = np.asarray(msg["delta"], dtype=float).reshape(6, 1)
         self.eskf.P = np.asarray(msg["P_new"], dtype=float).reshape(6, 6)
         self.apply_filter_correction(k)
@@ -167,7 +167,7 @@ class Robot:
             "V_new": int(Vi) | int(Vj),
         }
 
-    def apply_ci_update(self, k, msg, objective):
+    def apply_ci_update(self, k, msg):
        
         P_prior = self.eskf.P.copy()
         delta_pseudo = np.asarray(msg["delta_pseudo"], dtype=float).reshape(6, 1)
@@ -176,8 +176,7 @@ class Robot:
         delta_fused, P_fused, best_w = ESKFSingleRobot.covariance_intersection_fuse(
             P_prior=P_prior,
             delta_pseudo=delta_pseudo,
-            P_pseudo=P_pseudo,
-            objective=objective,
+            P_pseudo=P_pseudo
         )
 
         self.eskf.deltax = delta_fused.reshape(6, 1)
@@ -185,13 +184,12 @@ class Robot:
         self.apply_filter_correction(k)
         self.V_coop = int(msg["V_new"])
 
-    def request_ci_range_update_as_initiator(
+    def request_ci_range_update(
         self,
         k,
         y_meas,
         R,
-        reflector_robot,
-        objective="logdet",
+        reflector_robot
     ):
         initiator_packet = self.get_coop_packet(k)
         msg = reflector_robot.build_ci_update_packet(
@@ -200,10 +198,10 @@ class Robot:
             R=R,
             initiator_packet=initiator_packet,
         )
-        self.apply_ci_update(k, msg, objective)
+        self.apply_ci_update(k, msg)
 
 
-    def inflated_covariance_range_update_as_initiator(self, k, y_meas, R, reflector_packet, coop_type, force_uncorrelated=False):
+    def ic_range_update_as_initiator(self, k, y_meas, R, reflector_packet, ic_coop_type, force_uncorrelated=False):
         p_i = self.p_nominal[k].copy()
         Pi = self.eskf.P.copy()
         Vi = int(self.V_coop)
@@ -212,7 +210,7 @@ class Robot:
         Pj = np.asarray(reflector_packet["P"], dtype=float).reshape(6, 6)
         Vj = int(reflector_packet["V"])
 
-        di, Pi_new, dj, Pj_new, V_new = ESKFSingleRobot.inflated_covariance_range_update(
+        di, Pi_new, dj, Pj_new, V_new = ESKFSingleRobot.ic_range_update(
             Pi=Pi,
             Pj=Pj,
             p_i=p_i,
@@ -221,7 +219,7 @@ class Robot:
             R=R,
             Vi=Vi,
             Vj=Vj,
-            type = coop_type,
+            ic_coop_type = ic_coop_type,
             force_uncorrelated=force_uncorrelated,
         )
 
@@ -230,7 +228,7 @@ class Robot:
         self.apply_filter_correction(k)
         self.V_coop = int(V_new)
 
-        if coop_type == "commensalistic":
+        if ic_coop_type == "commensalistic":
             dj = np.zeros_like(dj)
             Pj_new = Pj.copy()
             V_new = int(Vj)
@@ -242,6 +240,29 @@ class Robot:
         }
 
         return msg_to_reflector
+    
+
+
+    def request_ic_range_update(
+        self,
+        k,
+        y_meas,
+        R,
+        reflector_robot,
+        coop_type,
+        force_uncorrelated_robot_range,
+    ):
+        reflector_packet = reflector_robot.get_coop_packet(k)
+        msg_to_reflector = self.ic_range_update_as_initiator(
+            k,
+            y_meas,
+            R,
+            reflector_packet,
+            coop_type,
+            force_uncorrelated_robot_range,
+        )
+        reflector_robot.apply_ic_coop_update(k, msg_to_reflector)
+
 
 
 def initialize_robot_positions(

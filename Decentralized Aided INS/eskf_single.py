@@ -116,8 +116,8 @@ class ESKFSingleRobot:
         self.deltax = np.zeros_like(self.deltax)
 
     @staticmethod
-    def inflated_covariance_range_update(
-        Pi, Pj, p_i, p_j, y_meas, R, Vi, Vj, type, omega_grid=None, force_uncorrelated=False
+    def ic_range_update(
+        Pi, Pj, p_i, p_j, y_meas, R, Vi, Vj, ic_coop_type, omega_grid=None, force_uncorrelated=False
     ):
         """
         Mutualistic or commensalistic cooperative range update for two robots (i initiator, j reflector).
@@ -133,12 +133,12 @@ class ESKFSingleRobot:
         omega_used : float | None
             Used covariance-intersection weight when correlated, otherwise None.
         """
-        if type == "mutualistic":
+        if ic_coop_type == "mutualistic":
             c_i, c_j = 1.0, 1.0
-        elif type == "commensalistic":
+        elif ic_coop_type == "commensalistic":
             c_i, c_j = 1.0, 0.0
         else:
-            raise ValueError("type must be 'mutualistic' or 'commensalistic'")
+            raise ValueError("ic_coop_type must be 'mutualistic' or 'commensalistic'")
         
         Pi = np.asarray(Pi, dtype=float).reshape(6, 6)
         Pj = np.asarray(Pj, dtype=float).reshape(6, 6)
@@ -264,7 +264,7 @@ class ESKFSingleRobot:
         return delta_i_from_j, P_i_from_j.reshape(6, 6)
 
     @staticmethod
-    def covariance_intersection_fuse(P_prior, delta_pseudo, P_pseudo, objective):
+    def covariance_intersection_fuse(P_prior, delta_pseudo, P_pseudo):
         """
         Fuse a zero-mean prior and a pseudo-posterior using covariance intersection.
 
@@ -288,6 +288,7 @@ class ESKFSingleRobot:
             P_pseudo_inv = np.linalg.inv(P_pseudo + ridge)
 
         def score_covariance(P):
+            objective = "logdet"  # or "trace"
             P = 0.5 * (P + P.T)
             if objective == "logdet":
                 try:
