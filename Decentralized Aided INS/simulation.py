@@ -22,7 +22,7 @@ from config import (
 
 
 num_robots = 2
-duration_s = 500.0
+duration_s = 5000.0
 standstill_time = 20.0                  # [s] initial standstill period for calibration
 use_true_initial_position = True        # True => all robots start at true positions
 trajectory_mode = "random"              # "random", "parallel_x", or "parallel_y"
@@ -39,11 +39,11 @@ beacon_ranging = False                  # robot-to-beacon ranging
 robot_ranging = True                    # robot-to-robot ranging
 
 cooperative_range_method = "ic"         # "ic" (inflated covariance) or "ci" (covariance intersection) 
-ic_coop_type = "mutualistic"            # "mutualistic" or "commensalistic" cooperative range updates for robot-to-robot ranging
+ic_coop_type = "commensalistic"            # "mutualistic" or "commensalistic" cooperative range updates for robot-to-robot ranging
 force_uncorrelated_robot_range = True   # If True, ignore cooperative-history correlation and treat robot pairs as uncorrelated
 
 beacon_range_rate_hz = 1.0              # [Hz] robot-to-beacon range rate
-robot_range_rate_hz = 1.0               # [Hz] robot-to-robot range rate
+robot_range_rate_hz = 0.1               # [Hz] robot-to-robot range rate
 range_measurement_stop_time = None      # seconds; None => entire run
 
 plot_acc = 0

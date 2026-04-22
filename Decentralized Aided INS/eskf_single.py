@@ -258,13 +258,12 @@ class ESKFSingleRobot:
 
         I = np.eye(6)
         A = I - K_i @ Hi
-        P_i_from_j = A @ Pi @ A.T + K_i @ R_eff @ K_i.T 
-        P_i_from_j = 0.5 * (P_i_from_j + P_i_from_j.T)
+        P_i_from_j = A @ Pi @ A.T + K_i @ R_eff @ K_i.T
 
         return delta_i_from_j, P_i_from_j.reshape(6, 6)
 
     @staticmethod
-    def covariance_intersection_fuse(P_prior, delta_pseudo, P_pseudo):
+    def ci_fuse(P_prior, delta_pseudo, P_pseudo):
         """
         Fuse a zero-mean prior and a pseudo-posterior using covariance intersection.
 
@@ -316,4 +315,4 @@ class ESKFSingleRobot:
         P_fused = np.linalg.inv(best_w * P_prior_inv + (1.0 - best_w) * P_pseudo_inv)
         delta_fused = P_fused @ ((1.0 - best_w) * P_pseudo_inv @ delta_pseudo)
 
-        return delta_fused.reshape(6, 1), P_fused.reshape(6, 6), float(best_w)
+        return delta_fused.reshape(6, 1), P_fused.reshape(6, 6)

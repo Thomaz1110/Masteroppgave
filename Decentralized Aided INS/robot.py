@@ -135,72 +135,13 @@ class Robot:
             "V": int(self.V_coop),
         }
 
-    def apply_ic_coop_update(self, k, msg):
-        self.eskf.deltax = np.asarray(msg["delta"], dtype=float).reshape(6, 1)
-        self.eskf.P = np.asarray(msg["P_new"], dtype=float).reshape(6, 6)
-        self.apply_filter_correction(k)
-        self.V_coop = int(msg["V_new"])
 
 
-    def build_ci_update_packet(self, k, y_meas, R, initiator_packet):
-
-        p_j = self.p_nominal[k].copy()
-        Pj = self.eskf.P.copy()
-        Vj = int(self.V_coop)
-
-        p_i = np.asarray(initiator_packet["p_hat"], dtype=float).reshape(2)
-        Pi = np.asarray(initiator_packet["P"], dtype=float).reshape(6, 6)
-        Vi = int(initiator_packet["V"])
-
-        delta_i_from_j, P_i_from_j = ESKFSingleRobot.build_ci_pseudoposterior_from_range(
-            Pi=Pi,
-            Pj=Pj,
-            p_i=p_i,
-            p_j=p_j,
-            y_meas=y_meas,
-            R=R,
-        )
-
-        return {
-            "delta_pseudo": delta_i_from_j.reshape(6, 1),
-            "P_pseudo": P_i_from_j.reshape(6, 6),
-            "V_new": int(Vi) | int(Vj),
-        }
-
-    def apply_ci_update(self, k, msg):
-       
-        P_prior = self.eskf.P.copy()
-        delta_pseudo = np.asarray(msg["delta_pseudo"], dtype=float).reshape(6, 1)
-        P_pseudo = np.asarray(msg["P_pseudo"], dtype=float).reshape(6, 6)
-
-        delta_fused, P_fused, best_w = ESKFSingleRobot.covariance_intersection_fuse(
-            P_prior=P_prior,
-            delta_pseudo=delta_pseudo,
-            P_pseudo=P_pseudo
-        )
-
-        self.eskf.deltax = delta_fused.reshape(6, 1)
-        self.eskf.P = P_fused.reshape(6, 6)
-        self.apply_filter_correction(k)
-        self.V_coop = int(msg["V_new"])
-
-    def request_ci_range_update(
-        self,
-        k,
-        y_meas,
-        R,
-        reflector_robot
-    ):
-        initiator_packet = self.get_coop_packet(k)
-        msg = reflector_robot.build_ci_update_packet(
-            k=k,
-            y_meas=y_meas,
-            R=R,
-            initiator_packet=initiator_packet,
-        )
-        self.apply_ci_update(k, msg)
 
 
+
+    # ----- INFLATED COVARIANCE -----
+    
     def ic_range_update_as_initiator(self, k, y_meas, R, reflector_packet, ic_coop_type, force_uncorrelated=False):
         p_i = self.p_nominal[k].copy()
         Pi = self.eskf.P.copy()
@@ -262,6 +203,87 @@ class Robot:
             force_uncorrelated_robot_range,
         )
         reflector_robot.apply_ic_coop_update(k, msg_to_reflector)
+
+
+
+
+
+
+
+
+
+    # ----- COVARIANCE INTERSECTION -----
+
+    def apply_ic_coop_update(self, k, msg):
+        self.eskf.deltax = np.asarray(msg["delta"], dtype=float).reshape(6, 1)
+        self.eskf.P = np.asarray(msg["P_new"], dtype=float).reshape(6, 6)
+        self.apply_filter_correction(k)
+        self.V_coop = int(msg["V_new"])
+
+
+    def build_ci_update_packet(self, k, y_meas, R, initiator_packet):
+
+        p_j = self.p_nominal[k].copy()
+        Pj = self.eskf.P.copy()
+        Vj = int(self.V_coop)
+
+        p_i = np.asarray(initiator_packet["p_hat"], dtype=float).reshape(2)
+        Pi = np.asarray(initiator_packet["P"], dtype=float).reshape(6, 6)
+        Vi = int(initiator_packet["V"])
+
+        delta_i_from_j, P_i_from_j = ESKFSingleRobot.build_ci_pseudoposterior_from_range(
+            Pi=Pi,
+            Pj=Pj,
+            p_i=p_i,
+            p_j=p_j,
+            y_meas=y_meas,
+            R=R,
+        )
+
+        return {
+            "delta_pseudo": delta_i_from_j.reshape(6, 1),
+            "P_pseudo": P_i_from_j.reshape(6, 6),
+            "V_new": int(Vi) | int(Vj),
+        }
+
+    def apply_ci_update(self, k, msg):
+       
+        P_prior = self.eskf.P.copy()
+        delta_pseudo = np.asarray(msg["delta_pseudo"], dtype=float).reshape(6, 1)
+        P_pseudo = np.asarray(msg["P_pseudo"], dtype=float).reshape(6, 6)
+
+        delta_fused, P_fused = ESKFSingleRobot.ci_fuse(
+            P_prior=P_prior,
+            delta_pseudo=delta_pseudo,
+            P_pseudo=P_pseudo
+        )
+
+        self.eskf.deltax = delta_fused.reshape(6, 1)
+        self.eskf.P = P_fused.reshape(6, 6)
+        self.apply_filter_correction(k)
+        self.V_coop = int(msg["V_new"])
+
+    def request_ci_range_update(
+        self,
+        k,
+        y_meas,
+        R,
+        reflector_robot
+    ):
+        initiator_packet = self.get_coop_packet(k)
+        msg = reflector_robot.build_ci_update_packet(
+            k=k,
+            y_meas=y_meas,
+            R=R,
+            initiator_packet=initiator_packet,
+        )
+        self.apply_ci_update(k, msg)
+
+
+   
+
+
+
 
 
 
