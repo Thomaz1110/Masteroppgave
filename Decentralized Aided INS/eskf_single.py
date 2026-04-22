@@ -147,7 +147,7 @@ class ESKFSingleRobot:
         R = np.array([[float(R)]]) if np.isscalar(R) else np.asarray(R, dtype=float).reshape(1, 1)
 
         if omega_grid is None:
-            omega_grid = np.linspace(0.05, 0.95, 19)
+            omega_grid = np.linspace(0.01, 0.99, 19)
 
         diff_nom = p_i - p_j
         dist_nom = max(np.linalg.norm(diff_nom), 1e-9)

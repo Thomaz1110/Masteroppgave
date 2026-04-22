@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import sys
 
 from robot import Robot, initialize_robot_positions, simulate_range_measurement
 import plotting as ins_plot
@@ -22,7 +23,7 @@ from config import (
 
 
 num_robots = 2
-duration_s = 5000.0
+duration_s = 2500.0
 standstill_time = 20.0                  # [s] initial standstill period for calibration
 use_true_initial_position = True        # True => all robots start at true positions
 trajectory_mode = "random"              # "random", "parallel_x", or "parallel_y"
@@ -39,7 +40,7 @@ beacon_ranging = False                  # robot-to-beacon ranging
 robot_ranging = True                    # robot-to-robot ranging
 
 cooperative_range_method = "ic"         # "ic" (inflated covariance) or "ci" (covariance intersection) 
-ic_coop_type = "commensalistic"            # "mutualistic" or "commensalistic" cooperative range updates for robot-to-robot ranging
+ic_coop_type = "mutualistic"            # "mutualistic" or "commensalistic" cooperative range updates for robot-to-robot ranging
 force_uncorrelated_robot_range = True   # If True, ignore cooperative-history correlation and treat robot pairs as uncorrelated
 
 beacon_range_rate_hz = 1.0              # [Hz] robot-to-beacon range rate
@@ -52,6 +53,7 @@ plot_pos = 1
 plot_bias = 1
 plot_pos_live = False
 plot_pos_live_every_n_steps = 20
+show_progress_bar = True
 
 
 
@@ -149,7 +151,28 @@ if plot_pos_live:
             grid_y_limits=(0.0, 21.0),
         )
 
+
+def print_simulation_progress(k, total_steps, current_time_s, total_time_s, bar_width=36):
+    if total_steps <= 0:
+        return
+
+    fraction = min(max(k / total_steps, 0.0), 1.0)
+    filled = int(round(bar_width * fraction))
+    bar = "#" * filled + "-" * (bar_width - filled)
+    msg = (
+        f"\rSimulation progress [{bar}] "
+        f"{100.0 * fraction:5.1f}%  "
+        f"t={current_time_s:7.1f}/{total_time_s:.1f} s"
+    )
+    sys.stdout.write(msg)
+    sys.stdout.flush()
+
 for k in range(1, N):
+    if show_progress_bar:
+        should_print_progress = (k == 1) or (k == N - 1) or (k % max(1, N // 200) == 0)
+        if should_print_progress:
+            print_simulation_progress(k, N - 1, t[k], t[-1])
+
     for robot in robots:
         robot.propagate_nominal(k)
         robot.eskf.predict()
@@ -259,6 +282,10 @@ for k in range(1, N):
     if plot_pos_live and (k % plot_pos_live_every_n_steps == 0 or k == N - 1):
         for robot in robots:
             ins_plot.update_live_position_plot(k, robot.pos_true, robot.p_nominal)
+
+if show_progress_bar:
+    sys.stdout.write("\r" + " " * 96 + "\r")
+    sys.stdout.flush()
 
 
  
