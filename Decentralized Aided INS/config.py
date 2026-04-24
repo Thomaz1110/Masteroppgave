@@ -16,6 +16,7 @@ trajectory_seed_base = 5001         # base seed for trajectory generation; each 
 imu_seed_base = 1002                # base seed for IMU noise generation; each robot gets a unique seed by adding its ID
 initial_bias_seed_base = 4002       # base seed for initial accelerometer bias generation; each robot gets a unique seed by adding its ID
 range_seed = 3002                   # seed for beacon range measurement noise
+robot_pairing_seed = 7003           # seed for random robot-to-robot pairing when num_robots > 2
 
 # Environment limits
 grid_x_limits = (0.0, 35.0)

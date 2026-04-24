@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from robot import Robot, initialize_robot_positions, simulate_range_measurement
-import plotting as ins_plot
+import plotting
 from config import (
     dt,
     sigma_acc,
@@ -16,13 +16,25 @@ from config import (
     imu_seed_base,
     initial_bias_seed_base,
     range_seed,
+    robot_pairing_seed,
     grid_x_limits,
     grid_y_limits,
 )
 
 
-num_robots = 2
-duration_s = 5000.0
+def get_random_robot_pairs(num_robots, pairing_rng):
+    robot_ids = np.arange(num_robots, dtype=int)
+    pairing_rng.shuffle(robot_ids)
+
+    pairs = []
+    for idx in range(0, num_robots - 1, 2):
+        pairs.append((int(robot_ids[idx]), int(robot_ids[idx + 1])))
+
+    return pairs
+
+
+num_robots = 20
+duration_s = 1000.0
 standstill_time = 20.0                  # [s] initial standstill period for calibration
 use_true_initial_position = True        # True => all robots start at true positions
 trajectory_mode = "random"              # "random", "parallel_x", or "parallel_y"
@@ -36,7 +48,7 @@ velocity_update_rate_hz = 10.0          # [Hz] dominant-axis zero-velocity updat
 
 use_virtual_measurements = True         # If True, use virtual measurements: dominant-axis velocity updates and initial standstill velocity updates
 beacon_ranging = False                  # robot-to-beacon ranging
-robot_ranging = True                    # robot-to-robot ranging
+robot_ranging = False                    # robot-to-robot ranging
 
 cooperative_range_method = "ic"         # "ic" (inflated covariance) or "ci" (covariance intersection) 
 ic_coop_type = "mutualistic"            # "mutualistic" or "commensalistic" cooperative range updates for robot-to-robot ranging
@@ -53,6 +65,7 @@ plot_bias = 1
 plot_pos_live = False
 plot_pos_live_every_n_steps = 20
 show_progress_bar = True
+use_individual_robot_plots = num_robots <= 2
 
 robots = []
 for idx in range(num_robots):
@@ -122,6 +135,7 @@ else:
 range_rngs = [
     np.random.default_rng(range_seed + idx) for idx in range(num_robots)
 ]
+robot_pairing_rng = np.random.default_rng(robot_pairing_seed)
 current_beacon_index = 0
 
 # Define beacons
@@ -139,7 +153,7 @@ robot0_is_next_initiator = True  # Alternate which robot acts as initiator for r
 
 if plot_pos_live:
     for idx, robot in enumerate(robots):
-        ins_plot.init_live_position_plot(
+        plotting.init_live_position_plot(
             robot.pos_true,
             robot.p_nominal,
             beacons=beacons_all if beacon_ranging else None,
@@ -148,8 +162,8 @@ if plot_pos_live:
             grid_y_limits=(0.0, 21.0),
         )
 if show_progress_bar:
-    ins_plot.start_simulation_progress(N - 1, t[-1])
-    ins_plot.print_simulation_progress(0, N - 1, 0.0, t[-1])
+    plotting.start_simulation_progress(N - 1, t[-1])
+    plotting.print_simulation_progress(0, N - 1, 0.0, t[-1])
 
 
 
@@ -172,7 +186,7 @@ for k in range(1, N):
     if show_progress_bar:
         should_refresh_progress = (k == 1) or (k == N - 1) or (k % max(1, N // 250) == 0)
         if should_refresh_progress:
-            ins_plot.print_simulation_progress(k, N - 1, t[k], t[-1])
+            plotting.print_simulation_progress(k, N - 1, t[k], t[-1])
 
     for robot in robots:
         robot.propagate_nominal(k)
@@ -284,13 +298,49 @@ for k in range(1, N):
             raise ValueError("Invalid cooperative_range_method. Must be 'ic' or 'ci'.")
 
 
+    elif robot_range_due and num_robots > 2:
+
+        robot_pairs = get_random_robot_pairs(num_robots, robot_pairing_rng)
+
+        for initiator_idx, reflector_idx in robot_pairs:
+            initiator_robot = robots[initiator_idx]
+            reflector_robot = robots[reflector_idx]
+
+            y_meas = simulate_range_measurement(
+                initiator_robot,
+                reflector_robot,
+                k,
+                range_rngs[initiator_robot.robot_id],
+                sigma_range,
+            )
+
+            if cooperative_range_method == "ic":
+                initiator_robot.request_ic_range_update(
+                    k,
+                    y_meas,
+                    sigma_range**2,
+                    reflector_robot,
+                    ic_coop_type,
+                    force_uncorrelated_robot_range
+                )
+            elif cooperative_range_method == "ci":
+                initiator_robot.request_ci_range_update(
+                    k,
+                    y_meas,
+                    sigma_range**2,
+                    reflector_robot
+                )
+            else:
+                raise ValueError("Invalid cooperative_range_method. Must be 'ic' or 'ci'.")
+
+
 
 
 
 
     if plot_pos_live and (k % plot_pos_live_every_n_steps == 0 or k == N - 1):
         for robot in robots:
-            ins_plot.update_live_position_plot(k, robot.pos_true, robot.p_nominal)
+            plotting.update_live_position_plot(k, robot.pos_true, robot.p_nominal)
 
 
 
@@ -325,23 +375,23 @@ for k in range(1, N):
 
 
 # Plotting
-if plot_acc:
+if use_individual_robot_plots and plot_acc:
     for idx, robot in enumerate(robots):
-        ins_plot.plot_acceleration(robot.t, robot.acc_true, robot.f_imu, robot_id=idx)
+        plotting.plot_acceleration(robot.t, robot.acc_true, robot.f_imu, robot_id=idx)
 
-if plot_vel:
+if use_individual_robot_plots and plot_vel:
     for idx, robot in enumerate(robots):
-        ins_plot.plot_velocity(robot.t, robot.vel_true, robot.v_nominal, robot_id=idx)
+        plotting.plot_velocity(robot.t, robot.vel_true, robot.v_nominal, robot_id=idx)
 
-if plot_pos:
+if use_individual_robot_plots and plot_pos:
     if trajectory_mode in {"parallel_x", "parallel_y"} and num_robots == 2:
-        ins_plot.plot_positions_combined(
+        plotting.plot_positions_combined(
             robots,
             beacons=beacons_all if beacon_ranging else None,
             title=f"{trajectory_mode}: True vs Estimated",
         )
         for idx, robot in enumerate(robots):
-            ins_plot.plot_positions(
+            plotting.plot_positions(
                 robot.t,
                 robot.pos_true,
                 robot.p_nominal,
@@ -354,7 +404,7 @@ if plot_pos:
             )
     else:
         for idx, robot in enumerate(robots):
-            ins_plot.plot_positions(
+            plotting.plot_positions(
                 robot.t,
                 robot.pos_true,
                 robot.p_nominal,
@@ -365,9 +415,9 @@ if plot_pos:
                 total_robots=num_robots,
             )
 
-if plot_bias:
+if use_individual_robot_plots and plot_bias:
     for idx, robot in enumerate(robots):
-        ins_plot.plot_bias(
+        plotting.plot_bias(
             robot.t,
             robot.bias_true,
             robot.b_nominal,
@@ -377,6 +427,6 @@ if plot_bias:
         )
 
 if show_progress_bar:
-    ins_plot.finish_simulation_progress()
+    plotting.finish_simulation_progress()
 
 plt.show()
