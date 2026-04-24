@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import sys
 from matplotlib.ticker import FormatStrFormatter
 
 # ------------------ GLOBAL STYLE SETTINGS ------------------
@@ -27,6 +28,29 @@ _live_true_line = None
 _live_est_line = None
 _live_true_marker = None
 _live_est_marker = None
+
+
+def start_simulation_progress(total_steps, total_time_s):
+    sys.stdout.write("\n")
+    sys.stdout.write("Simulation Progress\n")
+    sys.stdout.write(f"Total steps: {total_steps}  |  Simulated time: {total_time_s:.1f} s\n\n")
+    sys.stdout.flush()
+
+
+def print_simulation_progress(step_idx, total_steps, current_time_s, total_time_s):
+    fraction = 0.0 if total_steps <= 0 else min(max(step_idx / total_steps, 0.0), 1.0)
+    msg = (
+        f"  {100.0 * fraction:6.2f}%"
+        f"   Step {step_idx:>6}/{total_steps:<6}"
+        f"   Time {current_time_s:>8.1f}/{total_time_s:<8.1f} s"
+    )
+    sys.stdout.write("\033[2K\r" + msg[:120])
+    sys.stdout.flush()
+
+
+def finish_simulation_progress():
+    sys.stdout.write("\n\n")
+    sys.stdout.flush()
 
 
 def _set_bias_axis_scale(ax, true_min, true_max, step=0.005):

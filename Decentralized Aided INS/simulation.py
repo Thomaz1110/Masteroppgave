@@ -1,6 +1,5 @@
 import numpy as np
 import matplotlib.pyplot as plt
-import sys
 
 from robot import Robot, initialize_robot_positions, simulate_range_measurement
 import plotting as ins_plot
@@ -23,7 +22,7 @@ from config import (
 
 
 num_robots = 2
-duration_s = 2500.0
+duration_s = 5000.0
 standstill_time = 20.0                  # [s] initial standstill period for calibration
 use_true_initial_position = True        # True => all robots start at true positions
 trajectory_mode = "random"              # "random", "parallel_x", or "parallel_y"
@@ -43,7 +42,7 @@ cooperative_range_method = "ic"         # "ic" (inflated covariance) or "ci" (co
 ic_coop_type = "mutualistic"            # "mutualistic" or "commensalistic" cooperative range updates for robot-to-robot ranging
 force_uncorrelated_robot_range = True   # If True, ignore cooperative-history correlation and treat robot pairs as uncorrelated
 
-beacon_range_rate_hz = 1.0              # [Hz] robot-to-beacon range rate
+beacon_range_rate_hz = 0.1              # [Hz] robot-to-beacon range rate
 robot_range_rate_hz = 0.1               # [Hz] robot-to-robot range rate
 range_measurement_stop_time = None      # seconds; None => entire run
 
@@ -54,8 +53,6 @@ plot_bias = 1
 plot_pos_live = False
 plot_pos_live_every_n_steps = 20
 show_progress_bar = True
-
-
 
 robots = []
 for idx in range(num_robots):
@@ -100,7 +97,7 @@ for idx in range(num_robots):
         kf.P[1, 1] = 10e-3
     else:
         kf.P[0, 0] = initial_pos_var_robot
-        kf.P[1, 1] = initial_pos_var_robot
+    kf.P[1, 1] = initial_pos_var_robot
     kf.P[4, 4] = initial_bias_var
     kf.P[5, 5] = initial_bias_var
 
@@ -150,28 +147,32 @@ if plot_pos_live:
             grid_x_limits=(0.0, 35.0),
             grid_y_limits=(0.0, 21.0),
         )
+if show_progress_bar:
+    ins_plot.start_simulation_progress(N - 1, t[-1])
+    ins_plot.print_simulation_progress(0, N - 1, 0.0, t[-1])
 
 
-def print_simulation_progress(k, total_steps, current_time_s, total_time_s, bar_width=36):
-    if total_steps <= 0:
-        return
 
-    fraction = min(max(k / total_steps, 0.0), 1.0)
-    filled = int(round(bar_width * fraction))
-    bar = "#" * filled + "-" * (bar_width - filled)
-    msg = (
-        f"\rSimulation progress [{bar}] "
-        f"{100.0 * fraction:5.1f}%  "
-        f"t={current_time_s:7.1f}/{total_time_s:.1f} s"
-    )
-    sys.stdout.write(msg)
-    sys.stdout.flush()
+
+
+
+
+
+
+
+
+
+
+
+
+
+# ---------- SIMULATION LOOP ----------   
 
 for k in range(1, N):
     if show_progress_bar:
-        should_print_progress = (k == 1) or (k == N - 1) or (k % max(1, N // 200) == 0)
-        if should_print_progress:
-            print_simulation_progress(k, N - 1, t[k], t[-1])
+        should_refresh_progress = (k == 1) or (k == N - 1) or (k % max(1, N // 250) == 0)
+        if should_refresh_progress:
+            ins_plot.print_simulation_progress(k, N - 1, t[k], t[-1])
 
     for robot in robots:
         robot.propagate_nominal(k)
@@ -222,7 +223,9 @@ for k in range(1, N):
         and (range_measurement_stop_time is None or t[k] <= range_measurement_stop_time)
     )
 
-    # Robot-to-beacon range updates
+
+
+    # ROBOT-TO-BEACON RANGE UPDATES
     if beacon_due:
         for idx, robot in enumerate(robots):
             beacon = beacons_all[current_beacon_index]                                          # 3D beacon position
@@ -241,7 +244,11 @@ for k in range(1, N):
         current_beacon_index = (current_beacon_index + 1) % len(beacons_all)
 
     
-    # Robot-to-robot range updates with cooperative information sharing
+
+
+
+
+    # ROBOT-TO-ROBOT RANGE UPDATES
     if robot_range_due and num_robots == 2:
         
         if robot0_is_next_initiator:
@@ -255,6 +262,8 @@ for k in range(1, N):
         
         y_meas = simulate_range_measurement(initiator_robot, reflector_robot, k, range_rngs[initiator_robot.robot_id], sigma_range)
 
+        
+        # Inflated covariance (IC) or covariance intersection (CI) cooperative update requested by initiator robot
         if cooperative_range_method == "ic":
             initiator_robot.request_ic_range_update(
                 k,
@@ -283,12 +292,12 @@ for k in range(1, N):
         for robot in robots:
             ins_plot.update_live_position_plot(k, robot.pos_true, robot.p_nominal)
 
-if show_progress_bar:
-    sys.stdout.write("\r" + " " * 96 + "\r")
-    sys.stdout.flush()
 
 
- 
+
+
+
+
 
 
 
@@ -366,5 +375,8 @@ if plot_bias:
             robot_id=idx,
             total_robots=num_robots,
         )
+
+if show_progress_bar:
+    ins_plot.finish_simulation_progress()
 
 plt.show()
