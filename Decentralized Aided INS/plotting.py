@@ -30,6 +30,28 @@ _live_true_marker = None
 _live_est_marker = None
 
 
+def start_initialization_progress(total_robots):
+    sys.stdout.write("\n")
+    sys.stdout.write("Robot Initialization\n")
+    sys.stdout.write(f"Total robots: {total_robots}\n\n")
+    sys.stdout.flush()
+
+
+def print_initialization_progress(robot_idx, total_robots):
+    fraction = 0.0 if total_robots <= 0 else min(max(robot_idx / total_robots, 0.0), 1.0)
+    msg = (
+        f"  {100.0 * fraction:6.2f}%"
+        f"   Robot {robot_idx:>6}/{total_robots:<6}"
+    )
+    sys.stdout.write("\033[2K\r" + msg[:120])
+    sys.stdout.flush()
+
+
+def finish_initialization_progress():
+    sys.stdout.write("\n\n")
+    sys.stdout.flush()
+
+
 def start_simulation_progress(total_steps, total_time_s):
     sys.stdout.write("\n")
     sys.stdout.write("Simulation Progress\n")
@@ -589,6 +611,43 @@ def plot_positions_combined(
         ax.set_ylim(all_true[:, 1].min() - y_margin, all_true[:, 1].max() + y_margin)
 
 
+def plot_representative_position_errors(
+    t,
+    error_series,
+    robot_ids,
+    mean_errors,
+    mean_of_mean_errors,
+):
+    fig, ax = plt.subplots(figsize=(11, 6.5))
+
+    labels = ["Min mean", "Median mean", "Max mean"]
+    colors = ["tab:green", "tab:blue", "tab:red"]
+
+    for label, color, robot_id, err, mean_err in zip(labels, colors, robot_ids, error_series, mean_errors):
+        ax.plot(
+            t,
+            err,
+            color=color,
+            linewidth=1.8,
+            label=f"{label}: Robot {robot_id} (mean = {mean_err:.3f} m)",
+        )
+
+    ax.set_title("Representative Instantaneous Position Errors", fontsize=TITLE_FONTSIZE)
+    ax.set_xlabel("Time [s]", fontsize=LABEL_FONTSIZE)
+    ax.set_ylabel("Position error [m]", fontsize=LABEL_FONTSIZE)
+    ax.grid(True)
+    ax.legend()
+    _style_ax(ax)
+
+    fig.subplots_adjust(bottom=0.22)
+    fig.text(
+        0.5,
+        0.08,
+        f"Mean of robot mean position errors: {mean_of_mean_errors:.3f} m",
+        ha="center",
+        va="center",
+        fontsize=LABEL_FONTSIZE - 1,
+    )
 def plot_bias(t, bias_true, b_ins, b_hat=None, robot_id=None, total_robots=None):
     standalone = False
     if total_robots is not None and robot_id is not None and total_robots > 1:

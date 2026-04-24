@@ -33,8 +33,8 @@ def get_random_robot_pairs(num_robots, pairing_rng):
     return pairs
 
 
-num_robots = 20
-duration_s = 1000.0
+num_robots = 50
+duration_s = 2000.0
 standstill_time = 20.0                  # [s] initial standstill period for calibration
 use_true_initial_position = True        # True => all robots start at true positions
 trajectory_mode = "random"              # "random", "parallel_x", or "parallel_y"
@@ -48,7 +48,7 @@ velocity_update_rate_hz = 10.0          # [Hz] dominant-axis zero-velocity updat
 
 use_virtual_measurements = True         # If True, use virtual measurements: dominant-axis velocity updates and initial standstill velocity updates
 beacon_ranging = False                  # robot-to-beacon ranging
-robot_ranging = False                    # robot-to-robot ranging
+robot_ranging = True                    # robot-to-robot ranging
 
 cooperative_range_method = "ic"         # "ic" (inflated covariance) or "ci" (covariance intersection) 
 ic_coop_type = "mutualistic"            # "mutualistic" or "commensalistic" cooperative range updates for robot-to-robot ranging
@@ -66,6 +66,9 @@ plot_pos_live = False
 plot_pos_live_every_n_steps = 20
 show_progress_bar = True
 use_individual_robot_plots = num_robots <= 2
+
+if show_progress_bar:
+    plotting.start_initialization_progress(num_robots)
 
 robots = []
 for idx in range(num_robots):
@@ -85,6 +88,11 @@ for idx in range(num_robots):
         parallel_track_spacing_lines=parallel_track_spacing_lines,
     )
     robots.append(robot)
+    if show_progress_bar:
+        plotting.print_initialization_progress(idx + 1, num_robots)
+
+if show_progress_bar:
+    plotting.finish_initialization_progress()
 
 initialize_robot_positions(
     robots,
@@ -425,6 +433,35 @@ if use_individual_robot_plots and plot_bias:
             robot_id=idx,
             total_robots=num_robots,
         )
+
+
+
+
+if (not use_individual_robot_plots) and plot_pos:
+    robot_error_series = []
+    robot_mean_errors = []
+
+    for robot in robots:
+        pos_error = np.linalg.norm(robot.pos_true - robot.p_nominal, axis=1)
+        robot_error_series.append(pos_error)
+        robot_mean_errors.append(np.mean(pos_error))
+
+    robot_mean_errors = np.asarray(robot_mean_errors)
+    sorted_indices = np.argsort(robot_mean_errors)
+
+    min_idx = int(sorted_indices[0])
+    median_idx = int(sorted_indices[len(sorted_indices) // 2])
+    max_idx = int(sorted_indices[-1])
+
+    representative_indices = [min_idx, median_idx, max_idx]
+
+    plotting.plot_representative_position_errors(
+        t,
+        [robot_error_series[idx] for idx in representative_indices],
+        representative_indices,
+        [float(robot_mean_errors[idx]) for idx in representative_indices],
+        float(np.mean(robot_mean_errors)),
+    )
 
 if show_progress_bar:
     plotting.finish_simulation_progress()
