@@ -48,7 +48,7 @@ velocity_update_rate_hz = 10.0          # [Hz] dominant-axis zero-velocity updat
 
 use_virtual_measurements = True         # If True, use virtual measurements: dominant-axis velocity updates and initial standstill velocity updates
 beacon_ranging = False                  # robot-to-beacon ranging
-robot_ranging = True                    # robot-to-robot ranging
+robot_ranging = False                    # robot-to-robot ranging
 
 cooperative_range_method = "ci"         # "ic" (inflated covariance) or "ci" (covariance intersection) 
 ic_coop_type = "mutualistic"            # "mutualistic" or "commensalistic" cooperative range updates for robot-to-robot ranging
@@ -98,6 +98,8 @@ initialize_robot_positions(
     robots,
     use_true_initial_position,
     initial_pos_radius,
+    initial_pos_var_robot,
+    initial_bias_var,
     grid_x_limits=grid_x_limits,
     grid_y_limits=grid_y_limits,
 )
@@ -107,20 +109,6 @@ t = robots[0].t
 N = len(t)
 if any(robot.N != N for robot in robots):
     raise ValueError("All robots must have trajectories of equal length")
-
-
-# Initialize covariance P
-for idx in range(num_robots):
-    use_true = use_true_initial_position
-    kf = robots[idx].eskf
-    if use_true:
-        kf.P[0, 0] = 10e-3
-        kf.P[1, 1] = 10e-3
-    else:
-        kf.P[0, 0] = initial_pos_var_robot
-    kf.P[1, 1] = initial_pos_var_robot
-    kf.P[4, 4] = initial_bias_var
-    kf.P[5, 5] = initial_bias_var
 
 # Determine dominant-axis velocity update intervals in steps
 if velocity_update_rate_hz > 0.0:
