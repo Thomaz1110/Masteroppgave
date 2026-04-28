@@ -226,11 +226,9 @@ class Robot:
 
         p_j = self.p_nominal[k].copy()
         Pj = self.eskf.P.copy()
-        Vj = int(self.V_coop)
 
         p_i = np.asarray(initiator_packet["p_hat"], dtype=float).reshape(2)
         Pi = np.asarray(initiator_packet["P"], dtype=float).reshape(6, 6)
-        Vi = int(initiator_packet["V"])
 
         delta_i_from_j, P_i_from_j = ESKFSingleRobot.build_ci_pseudoposterior_from_range(
             Pi=Pi,
@@ -244,7 +242,6 @@ class Robot:
         return {
             "delta_pseudo": delta_i_from_j.reshape(6, 1),
             "P_pseudo": P_i_from_j.reshape(6, 6),
-            "V_new": int(Vi) | int(Vj),
         }
 
     def apply_ci_update(self, k, msg):
@@ -262,14 +259,13 @@ class Robot:
         self.eskf.deltax = delta_fused.reshape(6, 1)
         self.eskf.P = P_fused.reshape(6, 6)
         self.apply_filter_correction(k)
-        self.V_coop = int(msg["V_new"])
 
     def request_ci_range_update(
         self,
         k,
         y_meas,
         R,
-        reflector_robot
+        reflector_robot,
     ):
         initiator_packet = self.get_coop_packet(k)
         msg = reflector_robot.build_ci_update_packet(

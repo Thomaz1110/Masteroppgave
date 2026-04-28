@@ -617,6 +617,7 @@ def plot_representative_position_errors(
     robot_ids,
     mean_errors,
     mean_of_mean_errors,
+    aiding_label=None,
 ):
     fig, ax = plt.subplots(figsize=(11, 6.5))
 
@@ -639,15 +640,24 @@ def plot_representative_position_errors(
     ax.legend()
     _style_ax(ax)
 
-    fig.subplots_adjust(bottom=0.22)
+    fig.subplots_adjust(bottom=0.24)
     fig.text(
         0.5,
-        0.08,
+        0.09,
         f"Mean of robot mean position errors: {mean_of_mean_errors:.3f} m",
         ha="center",
         va="center",
         fontsize=LABEL_FONTSIZE - 1,
     )
+    if aiding_label is not None:
+        fig.text(
+            0.5,
+            0.045,
+            f"Aiding: {aiding_label}",
+            ha="center",
+            va="center",
+            fontsize=LABEL_FONTSIZE - 1,
+        )
 def plot_bias(t, bias_true, b_ins, b_hat=None, robot_id=None, total_robots=None):
     standalone = False
     if total_robots is not None and robot_id is not None and total_robots > 1:

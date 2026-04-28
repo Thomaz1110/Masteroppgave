@@ -33,7 +33,7 @@ def get_random_robot_pairs(num_robots, pairing_rng):
     return pairs
 
 
-num_robots = 50
+num_robots = 2
 duration_s = 2000.0
 standstill_time = 20.0                  # [s] initial standstill period for calibration
 use_true_initial_position = True        # True => all robots start at true positions
@@ -50,7 +50,7 @@ use_virtual_measurements = True         # If True, use virtual measurements: dom
 beacon_ranging = False                  # robot-to-beacon ranging
 robot_ranging = True                    # robot-to-robot ranging
 
-cooperative_range_method = "ic"         # "ic" (inflated covariance) or "ci" (covariance intersection) 
+cooperative_range_method = "ci"         # "ic" (inflated covariance) or "ci" (covariance intersection) 
 ic_coop_type = "mutualistic"            # "mutualistic" or "commensalistic" cooperative range updates for robot-to-robot ranging
 force_uncorrelated_robot_range = True   # If True, ignore cooperative-history correlation and treat robot pairs as uncorrelated
 
@@ -281,6 +281,9 @@ for k in range(1, N):
             initiator_robot = robots[1]
             reflector_robot = robots[0]
             robot0_is_next_initiator = True
+
+        # initiator_robot = robots[0]
+        # reflector_robot = robots[1]
         
         y_meas = simulate_range_measurement(initiator_robot, reflector_robot, k, range_rngs[initiator_robot.robot_id], sigma_range)
 
@@ -455,12 +458,26 @@ if (not use_individual_robot_plots) and plot_pos:
 
     representative_indices = [min_idx, median_idx, max_idx]
 
+    aiding_parts = []
+    if beacon_ranging:
+        aiding_parts.append("beacon ranging")
+    if robot_ranging:
+        if cooperative_range_method == "ic":
+            aiding_parts.append(f"robot ranging ({ic_coop_type} IC)")
+        elif cooperative_range_method == "ci":
+            aiding_parts.append("robot ranging (CI)")
+        else:
+            aiding_parts.append("robot ranging")
+    if not aiding_parts:
+        aiding_parts.append("no external aiding")
+
     plotting.plot_representative_position_errors(
         t,
         [robot_error_series[idx] for idx in representative_indices],
         representative_indices,
         [float(robot_mean_errors[idx]) for idx in representative_indices],
         float(np.mean(robot_mean_errors)),
+        aiding_label=", ".join(aiding_parts),
     )
 
 if show_progress_bar:
