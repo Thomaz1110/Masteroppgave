@@ -2,6 +2,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from robot import Robot, initialize_robot_positions, simulate_range_measurement
+from beacon_scheduler import (
+    get_tdma_beacon_assignments,
+    make_geometry_beacon_order,
+)
 import plotting
 from config import (
     dt,
@@ -23,7 +27,7 @@ from config import (
 
 
 
-num_robots = 1
+num_robots = 100
 duration_s = 1000.0
 standstill_time = 20.0                  # [s] initial standstill period for calibration
 use_true_initial_position = True        # True => all robots start at true positions
@@ -39,12 +43,14 @@ velocity_update_rate_hz = 10.0          # [Hz] dominant-axis zero-velocity updat
 use_virtual_measurements = True         # If True, use virtual measurements: dominant-axis velocity updates and initial standstill velocity updates
 beacon_ranging = True                  # robot-to-beacon ranging
 robot_ranging = False                    # robot-to-robot ranging
+use_tdma_beacon_scheduling = True       # True => TDMA beacon scheduling; False => naive shared-beacon ranging
 
 cooperative_range_method = "ic"         # "ic" (inflated covariance) or "ci" (covariance intersection) 
 ic_coop_type = "mutualistic"            # "mutualistic" or "commensalistic" cooperative range updates for robot-to-robot ranging
 force_uncorrelated_robot_range = True   # If True, ignore cooperative-history correlation and treat robot pairs as uncorrelated
 
-beacon_range_rate_hz = 0.1              # [Hz] robot-to-beacon range rate
+beacon_range_rate_hz = 0.1              # [Hz] robot-to-beacon range rate when use_tdma_beacon_scheduling is False
+beacon_range_duration_s = 0.2           # [s] TDMA range slot duration when use_tdma_beacon_scheduling is True
 robot_range_rate_hz = 0.1               # [Hz] robot-to-robot range rate
 range_measurement_stop_time = None      # seconds; None => entire run
 
@@ -107,10 +113,20 @@ else:
     velocity_update_interval_steps = None
 
 # Determine beacon range measurement interval
-if beacon_ranging and beacon_range_rate_hz > 0.0:
-    beacon_range_interval_steps = max(1, int(round(1.0 / (beacon_range_rate_hz * dt))))
-else:
+if not beacon_ranging:
     beacon_range_interval_steps = None
+elif use_tdma_beacon_scheduling:
+    beacon_range_interval_steps = (
+        max(1, int(round(beacon_range_duration_s / dt)))
+        if beacon_range_duration_s > 0.0
+        else None
+    )
+else:
+    beacon_range_interval_steps = (
+        max(1, int(round(1.0 / (beacon_range_rate_hz * dt))))
+        if beacon_range_rate_hz > 0.0
+        else None
+    )
 
 # Determine robot range measurement interval
 if robot_ranging and robot_range_rate_hz > 0.0:
@@ -137,6 +153,10 @@ beacons_all = np.array([
     [33.5, 10.0, beacon_height],    # Middle right
     [33.5, 18.5, beacon_height],    # Top right
 ])
+
+
+beacon_order = make_geometry_beacon_order(len(beacons_all))
+beacon_slot_index = 0
 
 
 robot0_is_next_initiator = True  # Alternate which robot acts as initiator for robot-to-robot ranging
@@ -239,21 +259,44 @@ for k in range(1, N):
 
     # ROBOT-TO-BEACON RANGE UPDATES
     if beacon_due:
-        for idx, robot in enumerate(robots):
-            beacon = beacons_all[current_beacon_index]                                          # 3D beacon position
-            initiator_nominal = np.array([robot.p_nominal[k, 0], robot.p_nominal[k, 1], 0.0])   # 3D nominal robot position
-            beacon_nominal = beacon
+        if use_tdma_beacon_scheduling:
+            for robot_idx, beacon_idx in get_tdma_beacon_assignments(
+                beacon_slot_index,
+                num_robots,
+                beacon_order,
+            ):
+                robot = robots[robot_idx]
+                beacon = beacons_all[beacon_idx]                                                # 3D beacon position
+                initiator_nominal = np.array([robot.p_nominal[k, 0], robot.p_nominal[k, 1], 0.0])   # 3D nominal robot position
+                beacon_nominal = beacon
 
-            y_meas = simulate_range_measurement(robot, beacon, k, range_rngs[idx], sigma_range)                                                           
-            
-            robot.eskf.update_beacon_range(
-                z=y_meas,
-                initiator_nom=initiator_nominal,
-                reflector_nom=beacon_nominal,
-                R=sigma_range**2,
-            )
-            robot.apply_filter_correction(k)
-        current_beacon_index = (current_beacon_index + 1) % len(beacons_all)
+                y_meas = simulate_range_measurement(robot, beacon, k, range_rngs[robot_idx], sigma_range)                                                           
+                
+                robot.eskf.update_beacon_range(
+                    z=y_meas,
+                    initiator_nom=initiator_nominal,
+                    reflector_nom=beacon_nominal,
+                    R=sigma_range**2,
+                )
+                robot.apply_filter_correction(k)
+            beacon_slot_index += 1
+
+        else:
+            for idx, robot in enumerate(robots):
+                beacon = beacons_all[current_beacon_index]                                      # 3D beacon position
+                initiator_nominal = np.array([robot.p_nominal[k, 0], robot.p_nominal[k, 1], 0.0])   # 3D nominal robot position
+                beacon_nominal = beacon
+
+                y_meas = simulate_range_measurement(robot, beacon, k, range_rngs[idx], sigma_range)                                                           
+                
+                robot.eskf.update_beacon_range(
+                    z=y_meas,
+                    initiator_nom=initiator_nominal,
+                    reflector_nom=beacon_nominal,
+                    R=sigma_range**2,
+                )
+                robot.apply_filter_correction(k)
+            current_beacon_index = (current_beacon_index + 1) % len(beacons_all)
 
     
 
