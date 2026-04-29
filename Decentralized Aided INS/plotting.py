@@ -667,8 +667,10 @@ def plot_bias(t, bias_true, b_ins, b_hat=None, robot_id=None, total_robots=None)
             a.clear()
     else:
         fig, axes = plt.subplots(2, 1, figsize=(10, 5), sharex=True)
-        # UPDATED: larger title + closer to plots
-        fig.suptitle("True vs Estimated Accelerometer Bias", fontsize=TITLE_FONTSIZE, y=0.94)
+        title = "True vs Estimated Accelerometer Bias"
+        if robot_id is not None:
+            title += f" (Robot {robot_id})"
+        fig.suptitle(title, fontsize=TITLE_FONTSIZE, y=0.94)
         standalone = True
 
     axes[0].plot(t, bias_true[:, 0], label="True bias $b_{acc,x}$")

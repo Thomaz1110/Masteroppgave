@@ -43,7 +43,7 @@ velocity_update_rate_hz = 10.0          # [Hz] dominant-axis zero-velocity updat
 use_virtual_measurements = True         # If True, use virtual measurements: dominant-axis velocity updates and initial standstill velocity updates
 beacon_ranging = True                  # robot-to-beacon ranging
 robot_ranging = False                    # robot-to-robot ranging
-use_tdma_beacon_scheduling = True       # True => TDMA beacon scheduling; False => naive shared-beacon ranging
+use_tdma_beacon_scheduling = False       # True => TDMA beacon scheduling; False => naive shared-beacon ranging
 
 cooperative_range_method = "ic"         # "ic" (inflated covariance) or "ci" (covariance intersection) 
 ic_coop_type = "mutualistic"            # "mutualistic" or "commensalistic" cooperative range updates for robot-to-robot ranging
@@ -54,14 +54,15 @@ beacon_range_duration_s = 0.2           # [s] TDMA range slot duration when use_
 robot_range_rate_hz = 0.1               # [Hz] robot-to-robot range rate
 range_measurement_stop_time = None      # seconds; None => entire run
 
-plot_acc = 0
-plot_vel = 0
-plot_pos = 1
-plot_bias = 1
+plot_acc = False
+plot_vel = False
+plot_pos = True
+plot_bias = True
 plot_pos_live = False
 plot_pos_live_every_n_steps = 20
 show_progress_bar = True
 use_individual_robot_plots = num_robots <= 2
+plot_worst_robot_when_many = True       # If individual plots are disabled, plot diagnostics for the largest mean-error robot
 
 if show_progress_bar:
     plotting.start_initialization_progress(num_robots)
@@ -283,7 +284,8 @@ for k in range(1, N):
 
         else:
             for idx, robot in enumerate(robots):
-                beacon = beacons_all[current_beacon_index]                                      # 3D beacon position
+                beacon_idx = int(beacon_order[current_beacon_index])
+                beacon = beacons_all[beacon_idx]                                                # 3D beacon position
                 initiator_nominal = np.array([robot.p_nominal[k, 0], robot.p_nominal[k, 1], 0.0])   # 3D nominal robot position
                 beacon_nominal = beacon
 
@@ -296,7 +298,7 @@ for k in range(1, N):
                     R=sigma_range**2,
                 )
                 robot.apply_filter_correction(k)
-            current_beacon_index = (current_beacon_index + 1) % len(beacons_all)
+            current_beacon_index = (current_beacon_index + 1) % len(beacon_order)
 
     
 
@@ -419,6 +421,31 @@ for k in range(1, N):
 
 
 # Plotting
+robot_error_series = None
+robot_mean_errors = None
+worst_robot_idx = None
+
+need_multi_robot_error_stats = (
+    (not use_individual_robot_plots)
+    and (
+        plot_pos
+        or (plot_worst_robot_when_many and (plot_acc or plot_vel or plot_bias))
+    )
+)
+
+if need_multi_robot_error_stats:
+    robot_error_series = []
+    robot_mean_errors = []
+
+    for robot in robots:
+        pos_error = np.linalg.norm(robot.pos_true - robot.p_nominal, axis=1)
+        robot_error_series.append(pos_error)
+        robot_mean_errors.append(np.mean(pos_error))
+
+    robot_mean_errors = np.asarray(robot_mean_errors)
+    if plot_worst_robot_when_many and (plot_acc or plot_vel or plot_pos or plot_bias):
+        worst_robot_idx = int(np.argmax(robot_mean_errors))
+
 if use_individual_robot_plots and plot_acc:
     for idx, robot in enumerate(robots):
         plotting.plot_acceleration(robot.t, robot.acc_true, robot.f_imu, robot_id=idx)
@@ -471,18 +498,48 @@ if use_individual_robot_plots and plot_bias:
         )
 
 
+if (not use_individual_robot_plots) and plot_worst_robot_when_many and worst_robot_idx is not None:
+    worst_robot = robots[worst_robot_idx]
+
+    if plot_acc:
+        plotting.plot_acceleration(
+            worst_robot.t,
+            worst_robot.acc_true,
+            worst_robot.f_imu,
+            robot_id=worst_robot_idx,
+        )
+
+    if plot_vel:
+        plotting.plot_velocity(
+            worst_robot.t,
+            worst_robot.vel_true,
+            worst_robot.v_nominal,
+            robot_id=worst_robot_idx,
+        )
+
+    if plot_pos:
+        plotting.plot_positions(
+            worst_robot.t,
+            worst_robot.pos_true,
+            worst_robot.p_nominal,
+            trajectory_mode,
+            beacons=beacons_all if beacon_ranging else None,
+            standstill_time=standstill_time,
+            robot_id=worst_robot_idx,
+        )
+
+    if plot_bias:
+        plotting.plot_bias(
+            worst_robot.t,
+            worst_robot.bias_true,
+            worst_robot.b_nominal,
+            None,
+            robot_id=worst_robot_idx,
+        )
+
 
 
 if (not use_individual_robot_plots) and plot_pos:
-    robot_error_series = []
-    robot_mean_errors = []
-
-    for robot in robots:
-        pos_error = np.linalg.norm(robot.pos_true - robot.p_nominal, axis=1)
-        robot_error_series.append(pos_error)
-        robot_mean_errors.append(np.mean(pos_error))
-
-    robot_mean_errors = np.asarray(robot_mean_errors)
     sorted_indices = np.argsort(robot_mean_errors)
 
     min_idx = int(sorted_indices[0])
