@@ -33,8 +33,8 @@ def get_random_robot_pairs(num_robots, pairing_rng):
     return pairs
 
 
-num_robots = 2
-duration_s = 2000.0
+num_robots = 1
+duration_s = 1000.0
 standstill_time = 20.0                  # [s] initial standstill period for calibration
 use_true_initial_position = True        # True => all robots start at true positions
 trajectory_mode = "random"              # "random", "parallel_x", or "parallel_y"
@@ -47,10 +47,10 @@ velocity_update_rate_hz = 10.0          # [Hz] dominant-axis zero-velocity updat
 
 
 use_virtual_measurements = True         # If True, use virtual measurements: dominant-axis velocity updates and initial standstill velocity updates
-beacon_ranging = False                  # robot-to-beacon ranging
+beacon_ranging = True                  # robot-to-beacon ranging
 robot_ranging = False                    # robot-to-robot ranging
 
-cooperative_range_method = "ci"         # "ic" (inflated covariance) or "ci" (covariance intersection) 
+cooperative_range_method = "ic"         # "ic" (inflated covariance) or "ci" (covariance intersection) 
 ic_coop_type = "mutualistic"            # "mutualistic" or "commensalistic" cooperative range updates for robot-to-robot ranging
 force_uncorrelated_robot_range = True   # If True, ignore cooperative-history correlation and treat robot pairs as uncorrelated
 
@@ -137,11 +137,15 @@ current_beacon_index = 0
 # Define beacons
 beacon_height = 2.0  # [m]
 beacons_all = np.array([
-    [2.5, 2.5, beacon_height],          # Bottom-left
-    [2.5, 18.5, beacon_height],         # Top-left
-    [17.5, 10.0, beacon_height],        # Center
-    [33.5, 2.5, beacon_height],         # Bottom-right
-    [33.5, 18.5, beacon_height],        # Top-right
+    [2.5, 2.5, beacon_height],      # Bottom left        
+    [2.5, 10.0, beacon_height],     # Middle left
+    [2.5, 18.5, beacon_height],     # Top left
+    [17.5, 2.5, beacon_height],     # Middle bottom
+    [17.5, 10.0, beacon_height],    # Middle
+    [17.5, 18.5, beacon_height],    # Middle top
+    [33.5, 2.5, beacon_height],     # Bottom right
+    [33.5, 10.0, beacon_height],    # Middle right
+    [33.5, 18.5, beacon_height],    # Top right
 ])
 
 
