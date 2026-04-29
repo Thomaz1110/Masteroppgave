@@ -15,7 +15,7 @@ initial_bias_var = 0.1              # covariance for initial accelerometer bias
 trajectory_seed_base = 5001         # base seed for trajectory generation; each robot gets a unique seed by adding its ID
 imu_seed_base = 1002                # base seed for IMU noise generation; each robot gets a unique seed by adding its ID
 initial_bias_seed_base = 4002       # base seed for initial accelerometer bias generation; each robot gets a unique seed by adding its ID
-range_seed = 3000                   # seed for beacon range measurement noise
+range_seed = 3002                   # seed for beacon range measurement noise
 
 # Environment limits
 grid_x_limits = (0.0, 35.0)

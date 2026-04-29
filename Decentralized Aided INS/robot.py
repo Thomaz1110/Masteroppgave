@@ -83,7 +83,7 @@ class Robot:
         acc_sample = self.f_imu[k - 1]
         acc_ins = acc_sample - self.b_nominal[k - 1]
         self.v_nominal[k] = self.v_nominal[k - 1] + acc_ins * self.dt
-        self.p_nominal[k] = self.p_nominal[k - 1] + self.v_nominal[k - 1] * self.dt #+ 0.5 * acc_ins * self.dt**2, removed for consistency with centralized case
+        self.p_nominal[k] = self.p_nominal[k - 1] + self.v_nominal[k - 1] * self.dt 
         self.b_nominal[k] = self.b_nominal[k - 1]
 
     def determine_dominant_axis(self, k):
@@ -123,9 +123,6 @@ class Robot:
         self.v_nominal[k] += delta[2:4]
         self.b_nominal[k] += delta[4:6]
         self.eskf.reset_error_state()
-
-    def get_position_measurement(self, k, rng, sigma_pos):
-        return self.pos_true[k] + rng.normal(scale=sigma_pos, size=2)
 
     def get_coop_packet(self, k):
         return {

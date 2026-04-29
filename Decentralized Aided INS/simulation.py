@@ -22,16 +22,6 @@ from config import (
 )
 
 
-def get_random_robot_pairs(num_robots, pairing_rng):
-    robot_ids = np.arange(num_robots, dtype=int)
-    pairing_rng.shuffle(robot_ids)
-
-    pairs = []
-    for idx in range(0, num_robots - 1, 2):
-        pairs.append((int(robot_ids[idx]), int(robot_ids[idx + 1])))
-
-    return pairs
-
 
 num_robots = 1
 duration_s = 1000.0
@@ -166,7 +156,15 @@ if show_progress_bar:
     plotting.print_simulation_progress(0, N - 1, 0.0, t[-1])
 
 
+def get_random_robot_pairs(num_robots, pairing_rng):
+    robot_ids = np.arange(num_robots, dtype=int)
+    pairing_rng.shuffle(robot_ids)
 
+    pairs = []
+    for idx in range(0, num_robots - 1, 2):
+        pairs.append((int(robot_ids[idx]), int(robot_ids[idx + 1])))
+
+    return pairs
 
 
 

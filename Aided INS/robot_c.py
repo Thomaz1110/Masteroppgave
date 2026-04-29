@@ -49,7 +49,7 @@ class Robot:
         acc_sample = self.f_imu[k - 1]
         acc_ins = acc_sample - self.b_nominal[k - 1]
         self.v_nominal[k] = self.v_nominal[k - 1] + acc_ins * self.dt
-        self.p_nominal[k] = self.p_nominal[k - 1] + self.v_nominal[k - 1] * self.dt + 0.5 * acc_ins * self.dt**2
+        self.p_nominal[k] = self.p_nominal[k - 1] + self.v_nominal[k - 1] * self.dt
         self.b_nominal[k] = self.b_nominal[k - 1]
 
     def determine_dominant_axis(self, k):
@@ -84,9 +84,6 @@ class Robot:
         self.b_nominal[k] += delta[4:6]
 
 
-    def get_position_measurement(self, k, rng, sigma_pos):
-        return self.pos_true[k] + rng.normal(scale=sigma_pos, size=2)
-
 
 def generate_robot_pair_groups(num):
     if num < 2:
@@ -112,7 +109,6 @@ def generate_robot_pair_groups(num):
 def initialize_robot_positions(
     robots,
     use_true_initial_position,
-    robot0_true_initial_position,
     initial_pos_radius,
     kf,
     initial_pos_var_robot,
@@ -144,8 +140,6 @@ def initialize_robot_positions(
     """
     for idx, robot in enumerate(robots):
         use_true = use_true_initial_position
-        if idx == 0 and robot0_true_initial_position:
-            use_true = True
         if use_true:
             robot.p_nominal[0] = robot.pos_true[0]
         else:

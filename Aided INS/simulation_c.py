@@ -22,23 +22,24 @@ from config_c import (
 )
 
 
-vel_threshold = 0.5                 # dominance threshold for dominant-axis detection
-dominant_axis_method = "true"       # "true" (use ground-truth velocity) or "nominal" (use estimated velocity + threshold)
-velocity_update_rate_hz = 10.0      # [Hz] dominant-axis zero-velocity update rate
-beacon_range_rate_hz = 0.1           # [Hz] robot0-to-beacon range rate
-robot_range_rate_hz = 1.0           # [Hz] robot-to-robot range rate per pair group
-range_measurement_stop_time = None  # seconds; None => entire run
-standstill_time = 20.0              # [s] initial standstill period for calibration
-
-use_virtual_measurements = True      # If True, use virtual measurements: dominant-axis velocity updates and initial standstill velocity updates
-beacon_ranging = True              # robot0-to-beacon ranging
-robot_ranging = False               # robot-to-robot ranging
-
-use_true_initial_position = True        # True => all robots start at true positions
-robot0_knows_initial_position = True    # If True, robot 0 starts at true position even when others don't
-
 num_robots = 1
 duration_s = 1000.0
+standstill_time = 20.0                  # [s] initial standstill period for calibration
+use_true_initial_position = True        # True => all robots start at true positions
+
+
+vel_threshold = 0.5                     # dominance threshold for dominant-axis detection
+dominant_axis_method = "true"           # "true" (use ground-truth velocity) or "nominal" (use estimated velocity + threshold)
+velocity_update_rate_hz = 10.0          # [Hz] dominant-axis zero-velocity update rate
+
+
+use_virtual_measurements = True         # If True, use virtual measurements: dominant-axis velocity updates and initial standstill velocity updates
+beacon_ranging = True                   # robot-to-beacon ranging
+robot_ranging = False                   # robot-to-robot ranging
+
+beacon_range_rate_hz = 0.1              # [Hz] robot-to-beacon range rate
+robot_range_rate_hz = 1.0               # [Hz] robot-to-robot range rate per pair group
+range_measurement_stop_time = None      # seconds; None => entire run
 
 plot_acc = 0
 plot_vel = 0
@@ -46,6 +47,7 @@ plot_pos = 1
 plot_bias = 1
 show_progress_bar = True
 use_individual_robot_plots = num_robots <= 2
+
 
 plot_mean_covariance_comparison = False
 average_joint_covariance_num_samples = 5
@@ -90,7 +92,6 @@ kf = ESKFMultiRobot(
 initialize_robot_positions(
     robots,
     use_true_initial_position,
-    robot0_knows_initial_position,
     initial_pos_radius,
     kf,
     initial_pos_var_robot,
@@ -220,27 +221,27 @@ for k in range(1, N):
         and (range_measurement_stop_time is None or t[k] <= range_measurement_stop_time)
     )
 
-    # Robot0-to-beacon range updates
+    # Robot-to-beacon range updates
     if beacon_due:
         beacon = beacons_all[current_beacon_index]
-        robot0 = robots[0]
-        initiator_true = np.array([robot0.pos_true[k, 0], robot0.pos_true[k, 1], 0.0])
-        initiator_nominal = np.array([robot0.p_nominal[k, 0], robot0.p_nominal[k, 1], 0.0])
-        reflector_true = beacon
-        reflector_nominal = beacon
-        diff_true = initiator_true - reflector_true
-        diff_nominal = initiator_nominal - reflector_nominal
-        y_meas = np.linalg.norm(diff_true) + range_rngs[0].normal(scale=sigma_range)
-        y_meas = max(y_meas, 0.0)
-        y_ins_hat = np.linalg.norm(diff_nominal)
-        kf.update(
-            0,
-            "beacon_range",
-            y_meas,
-            y_ins_hat,
-            initiator_nom=initiator_nominal,
-            reflector_nom=reflector_nominal,
-        )
+        for idx, robot in enumerate(robots):
+            initiator_true = np.array([robot.pos_true[k, 0], robot.pos_true[k, 1], 0.0])
+            initiator_nominal = np.array([robot.p_nominal[k, 0], robot.p_nominal[k, 1], 0.0])
+            reflector_true = beacon
+            reflector_nominal = beacon
+            diff_true = initiator_true - reflector_true
+            diff_nominal = initiator_nominal - reflector_nominal
+            y_meas = np.linalg.norm(diff_true) + range_rngs[idx].normal(scale=sigma_range)
+            y_meas = max(y_meas, 0.0)
+            y_ins_hat = np.linalg.norm(diff_nominal)
+            kf.update(
+                idx,
+                "beacon_range",
+                y_meas,
+                y_ins_hat,
+                initiator_nom=initiator_nominal,
+                reflector_nom=reflector_nominal,
+            )
         current_beacon_index = (current_beacon_index + 1) % len(beacons_all)
 
         # applying and resetting corrections after every type of update 
@@ -256,8 +257,6 @@ for k in range(1, N):
     if robot_due and robot_pair_groups:
         pair_group = robot_pair_groups[current_robot_pair_group_index]
         for initiator_idx, reflector_idx in pair_group:
-            if beacon_due and (initiator_idx == 0 or reflector_idx == 0):
-                continue                                                        # Skip if beacon range already done for robot 0 for this epoch
             initiator_robot = robots[initiator_idx]
             reflector_robot = robots[reflector_idx]
             initiator_true = np.array([initiator_robot.pos_true[k, 0], initiator_robot.pos_true[k, 1], 0.0])
