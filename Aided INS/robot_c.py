@@ -114,6 +114,9 @@ def initialize_robot_positions(
     use_true_initial_position,
     robot0_true_initial_position,
     initial_pos_radius,
+    kf,
+    initial_pos_var_robot,
+    initial_bias_var,
     grid_x_limits=(0.0, 35.0),
     grid_y_limits=(0.0, 20.0),
 ):
@@ -130,6 +133,12 @@ def initialize_robot_positions(
     around the true position, subject to grid constraints.
     initial_pos_radius : float
     Radius for the random initial offsets.
+    kf : ESKFMultiRobot
+    Centralized multi-robot filter whose covariance blocks are initialized here.
+    initial_pos_var_robot : float
+    Initial position variance used when the initial position is uncertain.
+    initial_bias_var : float
+    Initial accelerometer bias variance.
     grid_x_limits, grid_y_limits : tuple
     Allowed bounds for x and y coordinates.
     """
@@ -155,3 +164,14 @@ def initialize_robot_positions(
                 candidate[0] = np.clip(candidate[0], grid_x_limits[0], grid_x_limits[1])
                 candidate[1] = np.clip(candidate[1], grid_y_limits[0], grid_y_limits[1])
                 robot.p_nominal[0] = candidate
+
+        offset = idx * 6
+        if use_true:
+            kf.P[offset + 0, offset + 0] = 10e-3
+            kf.P[offset + 1, offset + 1] = 10e-3
+        else:
+            kf.P[offset + 0, offset + 0] = initial_pos_var_robot
+            kf.P[offset + 1, offset + 1] = initial_pos_var_robot
+
+        kf.P[offset + 4, offset + 4] = initial_bias_var
+        kf.P[offset + 5, offset + 5] = initial_bias_var

@@ -25,33 +25,37 @@ from config_c import (
 vel_threshold = 0.5                 # dominance threshold for dominant-axis detection
 dominant_axis_method = "true"       # "true" (use ground-truth velocity) or "nominal" (use estimated velocity + threshold)
 velocity_update_rate_hz = 10.0      # [Hz] dominant-axis zero-velocity update rate
-beacon_range_rate_hz = 1.0           # [Hz] robot0-to-beacon range rate
+beacon_range_rate_hz = 0.1           # [Hz] robot0-to-beacon range rate
 robot_range_rate_hz = 1.0           # [Hz] robot-to-robot range rate per pair group
 range_measurement_stop_time = None  # seconds; None => entire run
 standstill_time = 20.0              # [s] initial standstill period for calibration
 
 use_virtual_measurements = True      # If True, use virtual measurements: dominant-axis velocity updates and initial standstill velocity updates
-beacon_ranging = False              # robot0-to-beacon ranging
-robot_ranging = True               # robot-to-robot ranging
+beacon_ranging = True              # robot0-to-beacon ranging
+robot_ranging = False               # robot-to-robot ranging
 
 use_true_initial_position = True        # True => all robots start at true positions
 robot0_knows_initial_position = True    # If True, robot 0 starts at true position even when others don't
 
-num_robots = 2
-duration_s = 500.0
+num_robots = 1
+duration_s = 1000.0
 
 plot_acc = 0
 plot_vel = 0
 plot_pos = 1
 plot_bias = 1
+show_progress_bar = True
+use_individual_robot_plots = num_robots <= 2
 
-plot_mean_covariance_comparison = True
+plot_mean_covariance_comparison = False
 average_joint_covariance_num_samples = 5
 ci_inflation_omega = 0.5
 
 
 
 robots = []
+if show_progress_bar:
+    ins_plot.start_initialization_progress(num_robots)
 for idx in range(num_robots):
     robot = Robot(
         robot_id=idx,
@@ -67,22 +71,11 @@ for idx in range(num_robots):
         initial_bias_seed=initial_bias_seed_base + idx,
     )
     robots.append(robot)
+    if show_progress_bar:
+        ins_plot.print_initialization_progress(idx + 1, num_robots)
 
-initialize_robot_positions(
-    robots,
-    use_true_initial_position,
-    robot0_knows_initial_position,
-    initial_pos_radius,
-    grid_x_limits=grid_x_limits,
-    grid_y_limits=grid_y_limits,
-)
-
-
-t = robots[0].t
-N = len(t)
-if any(robot.N != N for robot in robots):
-    raise ValueError("All robots must have trajectories of equal length")
-
+if show_progress_bar:
+    ins_plot.finish_initialization_progress()
 
 # Initialize ESKF for multi-robot system
 kf = ESKFMultiRobot(
@@ -94,18 +87,23 @@ kf = ESKFMultiRobot(
     num_robots,
 )
 
-# Initialize covariance P
-for idx in range(num_robots):
-    use_true = use_true_initial_position or (idx == 0 and robot0_knows_initial_position)
-    offset = idx * 6
-    if use_true:
-        kf.P[offset + 0, offset + 0] = 10e-3
-        kf.P[offset + 1, offset + 1] = 10e-3
-    else:
-        kf.P[offset + 0, offset + 0] = initial_pos_var_robot
-        kf.P[offset + 1, offset + 1] = initial_pos_var_robot
-    kf.P[offset + 4, offset + 4] = initial_bias_var
-    kf.P[offset + 5, offset + 5] = initial_bias_var
+initialize_robot_positions(
+    robots,
+    use_true_initial_position,
+    robot0_knows_initial_position,
+    initial_pos_radius,
+    kf,
+    initial_pos_var_robot,
+    initial_bias_var,
+    grid_x_limits=grid_x_limits,
+    grid_y_limits=grid_y_limits,
+)
+
+
+t = robots[0].t
+N = len(t)
+if any(robot.N != N for robot in robots):
+    raise ValueError("All robots must have trajectories of equal length")
 
 covariance_averager = ins_plot.initialize_joint_covariance_averager(
     plot_mean_covariance_comparison,
@@ -147,15 +145,28 @@ current_robot_pair_group_index = 0
 # Define beacons
 beacon_height = 2.0  # [m]
 beacons_all = np.array([
-    [2.5, 2.5, beacon_height],          # Bottom-left
-    [2.5, 18.5, beacon_height],         # Top-left
-    [17.5, 10.0, beacon_height],        # Center
-    [33.5, 2.5, beacon_height],         # Bottom-right
-    [33.5, 18.5, beacon_height],        # Top-right
+    [2.5, 2.5, beacon_height],      # Bottom left        
+    [2.5, 10.0, beacon_height],     # Middle left
+    [2.5, 18.5, beacon_height],     # Top left
+    [17.5, 2.5, beacon_height],     # Middle bottom
+    [17.5, 10.0, beacon_height],    # Middle
+    [17.5, 18.5, beacon_height],    # Middle top
+    [33.5, 2.5, beacon_height],     # Bottom right
+    [33.5, 10.0, beacon_height],    # Middle right
+    [33.5, 18.5, beacon_height],    # Top right
 ])
 
 
+if show_progress_bar:
+    ins_plot.start_simulation_progress(N - 1, t[-1])
+    ins_plot.print_simulation_progress(0, N - 1, 0.0, t[-1])
+
 for k in range(1, N):
+    if show_progress_bar:
+        should_refresh_progress = (k == 1) or (k == N - 1) or (k % max(1, N // 250) == 0)
+        if should_refresh_progress:
+            ins_plot.print_simulation_progress(k, N - 1, t[k], t[-1])
+
     for robot in robots:
         robot.propagate_nominal(k)
 
@@ -277,15 +288,15 @@ for k in range(1, N):
 
 
 # Plotting
-if plot_acc:
+if use_individual_robot_plots and plot_acc:
     for idx, robot in enumerate(robots):
         ins_plot.plot_acceleration(robot.t, robot.acc_true, robot.f_imu, robot_id=idx)
 
-if plot_vel:
+if use_individual_robot_plots and plot_vel:
     for idx, robot in enumerate(robots):
         ins_plot.plot_velocity(robot.t, robot.vel_true, robot.v_nominal, robot_id=idx)
 
-if plot_pos:
+if use_individual_robot_plots and plot_pos:
     for idx, robot in enumerate(robots):
         ins_plot.plot_positions(
             robot.t,
@@ -298,7 +309,7 @@ if plot_pos:
             total_robots=num_robots,
         )
 
-if plot_bias:
+if use_individual_robot_plots and plot_bias:
     for idx, robot in enumerate(robots):
         ins_plot.plot_bias(
             robot.t,
@@ -309,6 +320,44 @@ if plot_bias:
             total_robots=num_robots,
         )
 
+if (not use_individual_robot_plots) and plot_pos:
+    robot_error_series = []
+    robot_mean_errors = []
+
+    for robot in robots:
+        pos_error = np.linalg.norm(robot.pos_true - robot.p_nominal, axis=1)
+        robot_error_series.append(pos_error)
+        robot_mean_errors.append(np.mean(pos_error))
+
+    robot_mean_errors = np.asarray(robot_mean_errors)
+    sorted_indices = np.argsort(robot_mean_errors)
+
+    min_idx = int(sorted_indices[0])
+    median_idx = int(sorted_indices[len(sorted_indices) // 2])
+    max_idx = int(sorted_indices[-1])
+
+    representative_indices = [min_idx, median_idx, max_idx]
+
+    aiding_parts = []
+    if beacon_ranging:
+        aiding_parts.append("beacon ranging")
+    if robot_ranging:
+        aiding_parts.append("robot ranging (centralized)")
+    if not aiding_parts:
+        aiding_parts.append("no external aiding")
+
+    ins_plot.plot_representative_position_errors(
+        t,
+        [robot_error_series[idx] for idx in representative_indices],
+        representative_indices,
+        [float(robot_mean_errors[idx]) for idx in representative_indices],
+        float(np.mean(robot_mean_errors)),
+        aiding_label=", ".join(aiding_parts),
+    )
+
 ins_plot.finalize_joint_covariance_averager(covariance_averager)
+
+if show_progress_bar:
+    ins_plot.finish_simulation_progress()
 
 plt.show()
